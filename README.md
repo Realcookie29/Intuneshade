@@ -2,7 +2,7 @@
 
 A free community console for Microsoft Intune administrators. Sign in with your Microsoft 365 account to see and control your whole tenant — assignments, device compliance, Autopilot group tags, reports and more. No install, no app registration.
 
-**Live app:** [salmon-sky-077dfd503.4.azurestaticapps.net](https://salmon-sky-077dfd503.4.azurestaticapps.net)
+**Live app:** [https://intuneshade.com
 
 ---
 
