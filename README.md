@@ -88,7 +88,7 @@ Each policy analysis costs roughly $0.01.
 - **`api/local.settings.json` and `*.local` are git-ignored.** Use `api/local.settings.json.example` as a template for local development.
 - **Graph API permissions are scoped to Intune management only.** No mail, calendar, or personal user data access. See the permission table below for exactly which scopes are requested and why.
 - **Tokens are stored in `sessionStorage`** (cleared on tab close), not `localStorage`.
-- **Security headers** (`Content-Security-Policy` with `frame-ancestors 'none'`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Permissions-Policy`) are set on all responses via `staticwebapp.config.json`.
+- **Security headers** (`Content-Security-Policy` with `default-src`/`script-src 'self'` and `frame-ancestors 'none'`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`, `Permissions-Policy`) are set on all responses via `staticwebapp.config.json`.
 
 ---
 
