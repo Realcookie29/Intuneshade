@@ -1,0 +1,8 @@
+node_modules
+src
+.git
+.vscode
+local.settings.json
+*.ts
+tsconfig.json
+package-lock.json
