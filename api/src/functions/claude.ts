@@ -203,18 +203,63 @@ async function callAI(
   return message.content[0].type === "text" ? message.content[0].text : "";
 }
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// In production the SPA and this API share the Static Web Apps host (same-origin,
+// so no CORS header is needed). Only known dev/prod origins may call cross-origin.
+// This stops arbitrary third-party sites from using the endpoint as an open AI relay.
+const ALLOWED_ORIGINS = new Set([
+  "https://intuneshade.com",
+  "https://www.intuneshade.com",
+  "http://localhost:5173",
+  "http://localhost:4173",
+]);
+
+function corsHeaders(req: HttpRequest): Record<string, string> {
+  const origin = req.headers.get("origin") ?? "";
+  const allowed =
+    ALLOWED_ORIGINS.has(origin) ||
+    /^https:\/\/[a-z0-9-]+\.azurestaticapps\.net$/i.test(origin);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Vary: "Origin",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Api-Key",
+  };
+  if (allowed) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
+}
+
+// ─── AI JSON parsing ────────────────────────────────────────────────────────────
+// Models occasionally return not-quite-JSON. Parse defensively and surface a
+// friendly error instead of a 500 with a raw dump. Never log the raw content
+// (it can echo tenant/policy data) — only its length.
+type ParseResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; response: HttpResponseInit };
+
+function parseJsonOr500<T>(
+  raw: string,
+  context: InvocationContext,
+  headers: Record<string, string>,
+): ParseResult<T> {
+  if (!raw) {
+    return { ok: false, response: { status: 500, headers, jsonBody: { error: "Empty response from AI model" } } };
+  }
+  try {
+    return { ok: true, data: JSON.parse(stripMarkdownJson(raw)) as T };
+  } catch {
+    context.error(`Failed to parse AI JSON (${raw.length} chars)`);
+    return { ok: false, response: { status: 500, headers, jsonBody: { error: "AI returned an unexpected format. Please try again." } } };
+  }
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function claudeHandler(
   req: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Api-Key",
-  };
+  const headers = corsHeaders(req);
 
   if (req.method === "OPTIONS") {
     return { status: 204, headers };
@@ -253,8 +298,8 @@ export async function claudeHandler(
 
       const raw = await callAI(provider, apiKey, ANALYZE_SYSTEM,
         `Analyze these Intune policies:\n\n${userContent}`, 4096, az.endpoint, az.deployment);
-      const result: AnalyzeResponse = JSON.parse(stripMarkdownJson(raw));
-      return { status: 200, headers, jsonBody: result };
+      const parsed = parseJsonOr500<AnalyzeResponse>(raw, context, headers);
+      return parsed.ok ? { status: 200, headers, jsonBody: parsed.data } : parsed.response;
     }
 
     // ── script ─────────────────────────────────────────────────────────────────
@@ -264,8 +309,8 @@ export async function claudeHandler(
       }
       const raw = await callAI(provider, apiKey, SCRIPT_SYSTEM,
         `Generate a ${body.scriptType ?? "powershell"} script to: ${body.description}`, 2000, az.endpoint, az.deployment);
-      const result: ScriptResponse = JSON.parse(stripMarkdownJson(raw));
-      return { status: 200, headers, jsonBody: result };
+      const parsed = parseJsonOr500<ScriptResponse>(raw, context, headers);
+      return parsed.ok ? { status: 200, headers, jsonBody: parsed.data } : parsed.response;
     }
 
     // ── resolve ────────────────────────────────────────────────────────────────
@@ -275,8 +320,8 @@ export async function claudeHandler(
       }
       const raw = await callAI(provider, apiKey, RESOLVE_SYSTEM,
         `Conflict detected:\n${body.conflict.description}\n\nAffected policies:\n${body.conflict.policies.join("\n")}`, 1000, az.endpoint, az.deployment);
-      const result: ResolveResponse = JSON.parse(stripMarkdownJson(raw));
-      return { status: 200, headers, jsonBody: result };
+      const parsed = parseJsonOr500<ResolveResponse>(raw, context, headers);
+      return parsed.ok ? { status: 200, headers, jsonBody: parsed.data } : parsed.response;
     }
 
     // ── compliance ─────────────────────────────────────────────────────────────
@@ -291,18 +336,8 @@ export async function claudeHandler(
       };
       const raw = await callAI(provider, apiKey, COMPLIANCE_SYSTEM,
         `Generate a compliance posture report for this Intune tenant:\n\n${JSON.stringify(trimmedSummary, null, 2)}`, 8192, az.endpoint, az.deployment);
-
-      if (!raw) {
-        return { status: 500, headers, jsonBody: { error: "Empty response from AI model" } };
-      }
-      let result: ComplianceResponse;
-      try {
-        result = JSON.parse(stripMarkdownJson(raw));
-      } catch {
-        context.error("Failed to parse compliance JSON. Raw:", raw.slice(0, 500));
-        return { status: 500, headers, jsonBody: { error: "AI returned an unexpected format. Please try again." } };
-      }
-      return { status: 200, headers, jsonBody: result };
+      const parsed = parseJsonOr500<ComplianceResponse>(raw, context, headers);
+      return parsed.ok ? { status: 200, headers, jsonBody: parsed.data } : parsed.response;
     }
 
     return { status: 400, headers, jsonBody: { error: `Unknown mode: ${body.mode}` } };
