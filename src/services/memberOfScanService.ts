@@ -59,10 +59,9 @@ export interface ReferencedGroup {
 
 export type RemediationKind =
   | "inlineRewrite" // every source group is dynamic and memberOf-free → rule can be flattened
-  | "convertToAssigned" // source groups are static → this group has to become assigned too
   | "nestedChain" // a source group itself uses memberOf → migrate inner rules first
   | "brokenReference" // the rule points at a group that no longer exists
-  | "manual"; // negation, mixed sources, or a shape we refuse to rewrite blind
+  | "manual"; // static sources, negation, or a shape we refuse to rewrite blind
 
 export type Severity = "high" | "medium" | "low";
 
@@ -95,7 +94,6 @@ export interface MemberOfFinding {
 
 const REMEDIATION_LABELS: Record<RemediationKind, string> = {
   inlineRewrite: "Rule can be flattened",
-  convertToAssigned: "Convert to assigned group",
   nestedChain: "Nested — migrate inner rule first",
   brokenReference: "Points at a missing group",
   manual: "Needs manual rewrite",
@@ -247,11 +245,13 @@ function buildSuggestion(
       `Source ${staticRefs.length === 1 ? "group" : "groups"} ${staticRefs
         .map((r) => `"${r.displayName}"`)
         .join(", ")} ${staticRefs.length === 1 ? "has" : "have"} assigned (static) membership, ` +
-        "so there is no rule to inline. Options: convert this group to assigned and keep its " +
-        "membership in sync from the source, or scope the Intune assignment with an assignment " +
-        "filter instead of a nested group."
+        "so there is no rule to inline and the replacement has to be written by hand. Look for a " +
+        "directory attribute the source members already share — department, jobTitle, an extension " +
+        "attribute — and rebuild the rule on that. Where the nesting only existed to narrow an " +
+        "Intune assignment, an assignment filter on the assignment itself does the same job without " +
+        "a second group."
     );
-    return { rule: null, kind: "convertToAssigned", notes };
+    return { rule: null, kind: "manual", notes };
   }
 
   const unsafe = clauses.filter(
@@ -485,9 +485,20 @@ function csvCell(value: string | number): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** One row per finding, with the referenced groups and suggestion inline. */
-export function buildMemberOfCsv(findings: MemberOfFinding[]): string {
+/** Migration ticks, passed in from the progress store so this stays pure. */
+export type CsvProgressLookup = (id: string) => { checked: boolean; done: boolean; updated: string };
+
+/**
+ * One row per finding, with the referenced groups and suggestion inline. The
+ * status columns come first so the sheet doubles as a hand-over checklist.
+ */
+export function buildMemberOfCsv(
+  findings: MemberOfFinding[],
+  progress?: CsvProgressLookup
+): string {
   const header = [
+    "Status",
+    "Marked on",
     "Object type",
     "Name",
     "Object ID",
@@ -502,7 +513,11 @@ export function buildMemberOfCsv(findings: MemberOfFinding[]): string {
     "Notes",
   ];
 
-  const rows = findings.map((f) => [
+  const rows = findings.map((f) => {
+    const p = progress?.(f.id);
+    return [
+    p?.done ? "Done" : p?.checked ? "Checked" : "Open",
+    p?.updated ? p.updated.slice(0, 10) : "",
     f.kind === "group" ? "Group" : "Administrative unit",
     f.displayName,
     f.id,
@@ -515,7 +530,8 @@ export function buildMemberOfCsv(findings: MemberOfFinding[]): string {
     f.membershipRule,
     f.suggestedRule ?? "",
     f.notes.join(" "),
-  ]);
+    ];
+  });
 
   return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
 }

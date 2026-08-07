@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Badge,
   Button,
+  Checkbox,
   Input,
   Spinner,
   Text,
@@ -12,6 +13,7 @@ import {
 } from "@fluentui/react-components";
 import {
   ArrowDownloadRegular,
+  ArrowResetRegular,
   ChevronRight16Regular,
   ClipboardRegular,
   CheckmarkRegular,
@@ -34,6 +36,9 @@ import {
   type MemberOfFinding,
   type Severity,
 } from "../../services/memberOfScanService";
+import { useMemberOfProgress, type ProgressEntry } from "../../store/memberOfProgressStore";
+
+const NO_PROGRESS: ProgressEntry = { checked: false, done: false, updated: "" };
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
@@ -90,18 +95,25 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "hidden",
   },
-  cardHead: {
+  cardHead: { display: "flex", alignItems: "center", gap: "8px", paddingRight: "14px" },
+  // The expander is a button; the tick boxes sit beside it rather than inside,
+  // so we never nest interactive controls.
+  cardHeadMain: {
     display: "flex",
     alignItems: "center",
     gap: "12px",
     padding: "12px 14px",
     cursor: "pointer",
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
     border: "none",
     background: "transparent",
     textAlign: "left",
     ":hover": { backgroundColor: tokens.colorNeutralBackground1Hover },
   },
+  ticks: { display: "flex", alignItems: "center", gap: "2px", flexShrink: 0 },
+  cardDone: { opacity: 0.55 },
+  cardDoneAccent: { borderLeft: `3px solid ${ACCENTS.mint}` },
   chevron: { transition: "transform 0.15s ease", flexShrink: 0, color: tokens.colorNeutralForeground3 },
   chevronOpen: { transform: "rotate(90deg)" },
   sevDot: { width: "8px", height: "8px", borderRadius: "50%", flexShrink: 0 },
@@ -201,10 +213,12 @@ const SEVERITY_COLOR: Record<Severity, string> = {
   low: tokens.colorNeutralForeground4,
 };
 
-type FilterKey = "all" | "groups" | "aus" | "impact" | "fixable";
+type FilterKey = "all" | "open" | "done" | "groups" | "aus" | "impact" | "fixable";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "open", label: "Open" },
+  { key: "done", label: "Done" },
   { key: "groups", label: "Groups" },
   { key: "aus", label: "Admin units" },
   { key: "impact", label: "Affects Intune" },
@@ -260,6 +274,9 @@ function CopyButton({ value }: { value: string }) {
 function FindingCard({ finding }: { finding: MemberOfFinding }) {
   const styles = useStyles();
   const [open, setOpen] = useState(false);
+  const progress = useMemberOfProgress((s) => s.entries[finding.id]) ?? NO_PROGRESS;
+  const setChecked = useMemberOfProgress((s) => s.setChecked);
+  const setDone = useMemberOfProgress((s) => s.setDone);
 
   // A group can be targeted by the same policy more than once (include on one
   // assignment, a filter variant on another) — count each policy once.
@@ -270,46 +287,69 @@ function FindingCard({ finding }: { finding: MemberOfFinding }) {
   }, [finding]);
 
   return (
-    <div className={styles.card}>
-      <button className={styles.cardHead} onClick={() => setOpen(!open)}>
-        <ChevronRight16Regular className={mergeClasses(styles.chevron, open && styles.chevronOpen)} />
-        <span className={styles.sevDot} style={{ backgroundColor: SEVERITY_COLOR[finding.severity] }} />
-        <span style={{ minWidth: 0 }}>
-          <Text className={styles.headName} block>
-            {finding.displayName}
-          </Text>
-          <Text className={styles.headMeta}>
-            {finding.kind === "group" ? "Dynamic group" : "Administrative unit"}
-            {" · "}
-            {finding.referenced.length} referenced{" "}
-            {finding.referenced.length === 1 ? "group" : "groups"}
-          </Text>
-        </span>
+    <div className={mergeClasses(styles.card, progress.done && styles.cardDoneAccent)}>
+      <div className={styles.cardHead}>
+        <button
+          className={mergeClasses(styles.cardHeadMain, progress.done && styles.cardDone)}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight16Regular className={mergeClasses(styles.chevron, open && styles.chevronOpen)} />
+          <span className={styles.sevDot} style={{ backgroundColor: SEVERITY_COLOR[finding.severity] }} />
+          <span style={{ minWidth: 0 }}>
+            <Text
+              className={styles.headName}
+              block
+              style={progress.done ? { textDecoration: "line-through" } : undefined}
+            >
+              {finding.displayName}
+            </Text>
+            <Text className={styles.headMeta}>
+              {finding.kind === "group" ? "Dynamic group" : "Administrative unit"}
+              {" · "}
+              {finding.referenced.length} referenced{" "}
+              {finding.referenced.length === 1 ? "group" : "groups"}
+              {progress.updated && ` · marked ${progress.updated.slice(0, 10)}`}
+            </Text>
+          </span>
 
-        <span className={styles.headRight}>
-          {finding.processingState.toLowerCase() === "paused" && (
-            <Badge appearance="outline" color="informative">
-              Paused
+          <span className={styles.headRight}>
+            {finding.processingState.toLowerCase() === "paused" && (
+              <Badge appearance="outline" color="informative">
+                Paused
+              </Badge>
+            )}
+            {distinctPolicies.length > 0 ? (
+              <Badge appearance="filled" color="danger">
+                {distinctPolicies.length} {distinctPolicies.length === 1 ? "policy" : "policies"}
+              </Badge>
+            ) : finding.policies !== null && finding.kind === "group" ? (
+              <Badge appearance="outline" color="success">
+                No Intune assignments
+              </Badge>
+            ) : null}
+            <Badge appearance="tint" color={finding.suggestedRule ? "success" : "warning"}>
+              {remediationLabel(finding.remediation)}
             </Badge>
-          )}
-          {finding.policies === null ? (
-            <Badge appearance="outline" color="subtle">
-              Impact not analysed
-            </Badge>
-          ) : distinctPolicies.length > 0 ? (
-            <Badge appearance="filled" color="danger">
-              {distinctPolicies.length} {distinctPolicies.length === 1 ? "policy" : "policies"}
-            </Badge>
-          ) : finding.kind === "group" ? (
-            <Badge appearance="outline" color="success">
-              No Intune assignments
-            </Badge>
-          ) : null}
-          <Badge appearance="tint" color={finding.suggestedRule ? "success" : "warning"}>
-            {remediationLabel(finding.remediation)}
-          </Badge>
+          </span>
+        </button>
+
+        <span className={styles.ticks}>
+          <Tooltip content="Reviewed — you know what this rule does" relationship="label">
+            <Checkbox
+              label="Checked"
+              checked={progress.checked}
+              onChange={(_, d) => setChecked(finding.id, !!d.checked)}
+            />
+          </Tooltip>
+          <Tooltip content="Migrated — this rule no longer uses memberOf" relationship="label">
+            <Checkbox
+              label="Done"
+              checked={progress.done}
+              onChange={(_, d) => setDone(finding.id, !!d.checked)}
+            />
+          </Tooltip>
         </span>
-      </button>
+      </div>
 
       {open && (
         <div className={styles.body}>
@@ -425,6 +465,8 @@ export default function MemberOfMigrationPage() {
   const [impactDone, setImpactDone] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
+  const entries = useMemberOfProgress((s) => s.entries);
+  const clearProgress = useMemberOfProgress((s) => s.clearAll);
 
   const days = daysUntilRetirement();
 
@@ -468,6 +510,9 @@ export default function MemberOfMigrationPage() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return findings.filter((f) => {
+      const p = entries[f.id];
+      if (filter === "open" && p?.done) return false;
+      if (filter === "done" && !p?.done) return false;
       if (filter === "groups" && f.kind !== "group") return false;
       if (filter === "aus" && f.kind !== "administrativeUnit") return false;
       if (filter === "impact" && !(f.policies && f.policies.length > 0)) return false;
@@ -479,7 +524,7 @@ export default function MemberOfMigrationPage() {
         f.referenced.some((r) => r.displayName.toLowerCase().includes(q))
       );
     });
-  }, [findings, filter, query]);
+  }, [findings, filter, query, entries]);
 
   const stats = useMemo(() => {
     const groups = findings.filter((f) => f.kind === "group").length;
@@ -488,11 +533,14 @@ export default function MemberOfMigrationPage() {
       findings.flatMap((f) => (f.policies ?? []).map((p) => p.policyId))
     ).size;
     const fixable = findings.filter((f) => f.suggestedRule).length;
-    return { groups, aus, policies, fixable };
-  }, [findings]);
+    const done = findings.filter((f) => entries[f.id]?.done).length;
+    const checked = findings.filter((f) => entries[f.id]?.checked && !entries[f.id]?.done).length;
+    return { groups, aus, policies, fixable, done, checked };
+  }, [findings, entries]);
 
   const exportCsv = () => {
-    const blob = new Blob([buildMemberOfCsv(visible)], { type: "text/csv;charset=utf-8" });
+    const lookup = (id: string) => entries[id] ?? NO_PROGRESS;
+    const blob = new Blob([buildMemberOfCsv(visible, lookup)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -615,6 +663,21 @@ export default function MemberOfMigrationPage() {
               <Text className={styles.statLabel}>Auto-rewritable</Text>
             </div>
             <div className={styles.stat}>
+              <Text
+                className={styles.statVal}
+                style={{ color: stats.done === findings.length ? ACCENTS.mint : undefined }}
+              >
+                {stats.done}
+                <span style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
+                  {" / "}
+                  {findings.length}
+                </span>
+              </Text>
+              <Text className={styles.statLabel}>
+                Migrated{stats.checked > 0 ? ` · ${stats.checked} checked` : ""}
+              </Text>
+            </div>
+            <div className={styles.stat}>
               <Text className={styles.statVal}>
                 {scanned.groups}
                 <span style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
@@ -624,6 +687,17 @@ export default function MemberOfMigrationPage() {
               </Text>
               <Text className={styles.statLabel}>Dynamic groups / units scanned</Text>
             </div>
+            {(stats.done > 0 || stats.checked > 0) && (
+              <Button
+                className={styles.spacer}
+                size="small"
+                appearance="subtle"
+                icon={<ArrowResetRegular />}
+                onClick={clearProgress}
+              >
+                Reset ticks
+              </Button>
+            )}
           </div>
         </>
       )}
