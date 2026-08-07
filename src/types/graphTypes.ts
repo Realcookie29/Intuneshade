@@ -89,6 +89,32 @@ export interface GroupDetail extends GraphGroup {
   mailNickname?: string;
 }
 
+// ─── Dynamic membership (groups + administrative units) ─────────────────────
+
+/** A group as returned when scanning for dynamic membership rules. */
+export interface DynamicGroup {
+  id: string;
+  displayName?: string;
+  description?: string;
+  groupTypes?: string[];
+  membershipRule?: string | null;
+  membershipRuleProcessingState?: string | null;
+  createdDateTime?: string;
+  securityEnabled?: boolean;
+  mailEnabled?: boolean;
+}
+
+/** An administrative unit, which can carry a dynamic membership rule too. */
+export interface AdministrativeUnit {
+  id: string;
+  displayName?: string;
+  description?: string;
+  membershipType?: string | null;
+  membershipRule?: string | null;
+  membershipRuleProcessingState?: string | null;
+  visibility?: string | null;
+}
+
 // ─── Managed devices ────────────────────────────────────────────────────────
 
 export interface ManagedDevice {

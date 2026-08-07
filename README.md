@@ -24,6 +24,7 @@ A free community console for Microsoft Intune administrators. Sign in with your 
 | 12 | **Group Membership** — view and manage the users/devices inside Entra ID groups | ✅ Live |
 | 13 | **Backup & Restore** — full-tenant policy backup to one JSON file, selective restore | ✅ Live |
 | 14 | **Audit History** — who changed what and when, with per-event property diffs | ✅ Live |
+| 15 | **memberOf Migration** — finds every dynamic group and administrative unit whose membership rule still uses the `memberOf` operator (retired from November 2026), shows what breaks in Intune, and proposes a replacement rule | ⏳ Temporary |
 
 ---
 

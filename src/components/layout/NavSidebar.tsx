@@ -26,6 +26,7 @@ import {
   DocumentTable24Regular,
   Tag24Regular,
   ShieldTask24Regular,
+  Warning24Regular,
   ChevronRight16Regular,
   SearchRegular,
   DismissRegular,
@@ -48,6 +49,7 @@ export type ToolView =
   | "backup"
   | "audit"
   | "groupMembership"
+  | "memberOfMigration"
   | "autopilotTags"
   | "compareDevice"
   | "compareDeviceUser";
@@ -100,6 +102,7 @@ const GROUPS: GroupDef[] = [
     tools: [
       { key: "backup", label: "Backup & Restore", icon: <ArrowSyncCircle24Regular /> },
       { key: "audit", label: "Audit History", icon: <History24Regular /> },
+      { key: "memberOfMigration", label: "memberOf Migration", icon: <Warning24Regular /> },
     ],
   },
 ];

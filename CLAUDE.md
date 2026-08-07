@@ -37,6 +37,7 @@ This is a **multi-tenant SPA** (no per-user server infrastructure) with a thin A
   - `analysisStore` — manages AI analysis panel state and result cache (keyed by sorted policy IDs)
   - `apiKeyStore` — manages the user's Anthropic API key (stored in `localStorage`)
   - `conflictStore` — manages conflict scan results
+- **memberOf migration (temporary)**: `src/utils/memberOfRule.ts` (pure rule parser, no Graph imports), `src/services/memberOfScanService.ts` (scan + remediation suggestions) and `src/components/governance/MemberOfMigrationPage.tsx`. This is a time-boxed migration aid for the Entra ID `memberOf` retirement — delete all three files, the `memberOfMigration` entry in `ToolView`/`NavSidebar`/`AppShell`, and the Dashboard quick action once the deadline in `MEMBEROF_RETIREMENT_DATE` has passed.
 - **Main orchestrator** (`src/components/layout/AppShell.tsx`): Holds page-level routing state (which "mode" is active: policy type view, bulk assign, conflict, map, report). All dialogs are rendered here.
 - **UI**: Fluent UI v9 (`@fluentui/react-components`). Use `makeStyles` for all component styling.
 

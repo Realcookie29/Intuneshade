@@ -207,6 +207,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (tool: ToolV
                 <Button className={styles.quickBtn} appearance="subtle" icon={<ArrowSwapRegular />} onClick={() => onNavigate("compareDeviceUser")}>Device + User Compare</Button>
                 <Button className={styles.quickBtn} appearance="subtle" icon={<AlertRegular />} onClick={() => onNavigate("conflict")}>Conflict Detection</Button>
                 <Button className={styles.quickBtn} appearance="subtle" icon={<ArrowSyncCircleRegular />} onClick={() => onNavigate("backup")}>Backup & Restore</Button>
+                <Button className={styles.quickBtn} appearance="subtle" icon={<WarningFilled style={{ color: ACCENTS.amber }} />} onClick={() => onNavigate("memberOfMigration")}>memberOf Migration</Button>
               </div>
             </div>
           </div>
