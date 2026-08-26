@@ -12,7 +12,7 @@ import ConflictDashboard from "../conflicts/ConflictDashboard";
 import AssignmentMatrixPage from "../map/AssignmentMatrixPage";
 import ComplianceReportPage from "../report/ComplianceReportPage";
 import AssignmentReportPage from "../report/AssignmentReportPage";
-import RequiredAppsReportDialog from "../report/RequiredAppsReportDialog";
+import RequiredAppsReportPage from "../report/RequiredAppsReportPage";
 import GroupFinderPage from "../groups/GroupFinderPage";
 import PolicySettingsSearchPage from "../search/PolicySettingsSearchPage";
 import AssignmentFiltersPage from "../filters/AssignmentFiltersPage";
@@ -103,7 +103,6 @@ export default function AppShell() {
   const [showEnableDisableDialog, setShowEnableDisableDialog] = useState(false);
   const [showDiffDialog, setShowDiffDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [showRequiredAppsDialog, setShowRequiredAppsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const { rows, isLoading, error: fetchError, refresh } = usePolicies(selectedType);
@@ -286,6 +285,10 @@ export default function AppShell() {
             <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>
               <AssignmentReportPage />
             </div>
+          ) : activeTool === "requiredApps" ? (
+            <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>
+              <RequiredAppsReportPage />
+            </div>
           ) : activeTool === "deviceCompliance" ? (
             <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>
               <DeviceCompliancePage />
@@ -325,7 +328,7 @@ export default function AppShell() {
                   onExport={handleExport}
                   onImport={() => setShowImportDialog(true)}
                   onDiff={() => setShowDiffDialog(true)}
-                  onRequiredAppsReport={() => setShowRequiredAppsDialog(true)}
+                  onRequiredAppsReport={() => handleToolSelect("requiredApps")}
                   canAdd={canAdd}
                   canDelete={canDelete}
                   canAnalyze={canAnalyze}
@@ -433,13 +436,6 @@ export default function AppShell() {
           policyA={selectedRows.filter((r) => r.policyId === distinctPolicies[0].policyId)}
           policyB={selectedRows.filter((r) => r.policyId === distinctPolicies[1].policyId)}
           onClose={() => setShowDiffDialog(false)}
-        />
-      )}
-
-      {showRequiredAppsDialog && selectedType === "mobileApps" && (
-        <RequiredAppsReportDialog
-          rows={rows}
-          onClose={() => setShowRequiredAppsDialog(false)}
         />
       )}
 

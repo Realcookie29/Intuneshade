@@ -68,10 +68,13 @@ export interface RequiredAppRecord {
   appType: string;
   platform: AppPlatform;
   target: string;
+  groupId: string | null;
   targetKind: "group" | "allUsers" | "allDevices";
   mode: "include" | "exclude";
   filterName: string;
   filterType: string;
+  /** Devices of the selected Autopilot profile that sit in this target (device mode only). */
+  deviceCount?: number;
 }
 
 /**
@@ -99,6 +102,7 @@ export function selectRequiredApps(
         r.assignmentType === "All Users" || r.assignmentType === "All Devices"
           ? r.assignmentType
           : r.groupDisplayName || "(unknown group)",
+      groupId: r.groupId,
       targetKind:
         r.assignmentType === "All Users"
           ? "allUsers"
@@ -109,6 +113,54 @@ export function selectRequiredApps(
       filterName: r.filterDisplayName,
       filterType: r.filterType ?? "",
     }));
+}
+
+/**
+ * Narrows the report to one Autopilot deployment profile.
+ *
+ * `groups` mode uses the groups the profile itself is assigned to — instant,
+ * but blind to apps that reach the same devices through another group.
+ * `devices` mode uses the groups the profile's actual devices belong to, which
+ * is what really lands on them.
+ */
+export interface ProfileFilter {
+  name: string;
+  mode: "groups" | "devices";
+  groupIds: Set<string>;
+  deviceCount?: number;
+  deviceCountByGroupId?: Map<string, number>;
+}
+
+export interface ProfileReportInfo {
+  name: string;
+  mode: "groups" | "devices";
+  targetGroups: string[];
+  deviceCount?: number;
+  resolvedGroups?: number;
+}
+
+export function applyProfileFilter(
+  records: RequiredAppRecord[],
+  pf: ProfileFilter,
+  includeAllUsers: boolean,
+): RequiredAppRecord[] {
+  const out: RequiredAppRecord[] = [];
+  for (const r of records) {
+    if (r.targetKind === "allDevices") {
+      out.push({ ...r, deviceCount: pf.deviceCount });
+      continue;
+    }
+    if (r.targetKind === "allUsers") {
+      // User-targeted, so it lands via whoever signs in rather than via the
+      // device itself — kept only when broad targets are switched on.
+      if (includeAllUsers) out.push({ ...r });
+      continue;
+    }
+    if (r.groupId && pf.groupIds.has(r.groupId)) {
+      out.push({ ...r, deviceCount: pf.deviceCountByGroupId?.get(r.groupId) });
+    }
+  }
+  return out;
 }
 
 function esc(s: string): string {
@@ -189,6 +241,7 @@ function rowAttrs(r: RequiredAppRecord): string {
     `data-target="${esc(r.target)}"`,
     `data-mode="${r.mode === "exclude" ? "Exclude" : "Include"}"`,
     `data-filter="${esc(r.filterName)}"`,
+    `data-devices="${r.deviceCount == null ? "" : r.deviceCount}"`,
   ].join(" ");
 }
 
@@ -211,8 +264,17 @@ function section(title: string, meta: string, accent: string, platform: string, 
 </details>`;
 }
 
-function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOptions): string {
+function deviceCell(r: RequiredAppRecord): string {
+  return r.deviceCount == null ? "—" : `<b>${r.deviceCount}</b>`;
+}
+
+function buildSections(
+  records: RequiredAppRecord[],
+  opts: RequiredAppsReportOptions,
+  showDevices: boolean,
+): string {
   const filterHeader = opts.includeFilters ? ["Filter"] : [];
+  const deviceHeader = showDevices ? ["Devices"] : [];
 
   if (opts.grouping === "app") {
     const byApp = new Map<string, RequiredAppRecord[]>();
@@ -230,7 +292,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
           PLATFORM_COLORS[head.platform],
           head.platform,
           table(
-            ["Target", "Mode", ...filterHeader],
+            ["Target", "Mode", ...filterHeader, ...deviceHeader],
             rows
               .sort((a, b) => a.target.localeCompare(b.target))
               .map((r) => ({
@@ -239,6 +301,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
                   esc(r.target),
                   modeBadge(r),
                   ...(opts.includeFilters ? [filterCell(r)] : []),
+                  ...(showDevices ? [deviceCell(r)] : []),
                 ],
               })),
           ),
@@ -263,7 +326,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
           "#6E62E5",
           "", // mixed platforms — visibility is driven by its rows
           table(
-            ["Application", "Platform", "App type", "Mode", ...filterHeader],
+            ["Application", "Platform", "App type", "Mode", ...filterHeader, ...deviceHeader],
             rows
               .sort((a, b) => a.appName.localeCompare(b.appName))
               .map((r) => ({
@@ -274,6 +337,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
                   esc(r.appType),
                   modeBadge(r),
                   ...(opts.includeFilters ? [filterCell(r)] : []),
+                  ...(showDevices ? [deviceCell(r)] : []),
                 ],
               })),
           ),
@@ -298,7 +362,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
         PLATFORM_COLORS[p],
         p,
         table(
-          ["Application", "App type", "Target", "Mode", ...filterHeader],
+          ["Application", "App type", "Target", "Mode", ...filterHeader, ...deviceHeader],
           rows
             .sort((a, b) => a.appName.localeCompare(b.appName) || a.target.localeCompare(b.target))
             .map((r) => ({
@@ -309,6 +373,7 @@ function buildSections(records: RequiredAppRecord[], opts: RequiredAppsReportOpt
                 esc(r.target),
                 modeBadge(r),
                 ...(opts.includeFilters ? [filterCell(r)] : []),
+                ...(showDevices ? [deviceCell(r)] : []),
               ],
             })),
         ),
@@ -326,14 +391,20 @@ function statTile(value: number | string, label: string, accent?: string): strin
 
 /** Produces a fully self-contained HTML document (inline CSS + JS, no externals). */
 export function buildRequiredAppsReportHtml(
-  rows: PolicyRow[],
+  records: RequiredAppRecord[],
   opts: RequiredAppsReportOptions,
   meta: RequiredAppsReportMeta,
+  profile?: ProfileReportInfo,
 ): string {
-  const records = selectRequiredApps(rows, opts);
   const s = summarize(records);
+  const showDevices = profile?.mode === "devices";
   const groupingLabel =
     opts.grouping === "app" ? "application" : opts.grouping === "group" ? "target group" : "platform";
+
+  const groupOptions = [...new Set(records.map((r) => r.target))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((g) => `<option value="${esc(g)}">${esc(g)}</option>`)
+    .join("");
 
   const platformChips = s.byPlatform
     .map(
@@ -346,15 +417,40 @@ export function buildRequiredAppsReportHtml(
     .join("");
 
   const sections = records.length
-    ? buildSections(records, opts)
-    : `<div class="empty">No Required app assignments match the selected options.</div>`;
+    ? buildSections(records, opts, showDevices)
+    : `<div class="empty">${
+        profile
+          ? `No Required apps reach this deployment profile with the selected options.`
+          : `No Required app assignments match the selected options.`
+      }</div>`;
+
+  const profileMeta = profile
+    ? `<span>Autopilot profile <b>${esc(profile.name)}</b></span>
+      <span>Scope <b>${
+        profile.mode === "devices"
+          ? `${profile.deviceCount ?? 0} devices · ${profile.resolvedGroups ?? 0} groups`
+          : `profile target groups (${profile.targetGroups.length})`
+      }</b></span>`
+    : "";
+
+  const profileNote = profile
+    ? `<div class="note">${
+        profile.mode === "devices"
+          ? `Resolved from the <b>${profile.deviceCount ?? 0}</b> device(s) actually assigned to <b>${esc(profile.name)}</b>, via their Entra group membership. The <b>Devices</b> column shows how many of those devices each assignment reaches.`
+          : `Based on the group(s) the profile <b>${esc(profile.name)}</b> is assigned to: ${
+              profile.targetGroups.length
+                ? profile.targetGroups.map((g) => `<b>${esc(g)}</b>`).join(", ")
+                : "<b>none</b>"
+            }. Apps that reach the same devices through a different group are not shown — run the device scan for that.`
+      }</div>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Required Applications — ${esc(meta.tenantName)}</title>
+<title>Required Applications${profile ? ` — ${esc(profile.name)}` : ""} — ${esc(meta.tenantName)}</title>
 <style>
   :root {
     --ink0:#0B0D13; --ink1:#0E1017; --ink2:#131620; --ink3:#191D28;
@@ -395,6 +491,11 @@ export function buildRequiredAppsReportHtml(
                   border-radius:0 2px 2px 0; background:var(--tile); }
   .tile-val { font-size:26px; font-weight:700; font-family:'Space Grotesk','Inter',sans-serif; line-height:1; }
   .tile-label { color:var(--fg3); font-size:12px; margin-top:6px; text-transform:uppercase; letter-spacing:.05em; }
+  .note {
+    background:var(--ink2); border:1px solid var(--stroke); border-left:3px solid var(--amber);
+    border-radius:10px; padding:12px 16px; margin:18px 0 0; color:var(--fg2); font-size:13px;
+  }
+  .note b { color:var(--fg); }
   .filterbar { margin:4px 0 18px; }
   .filterbar-label {
     color:var(--fg3); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
@@ -424,6 +525,11 @@ export function buildRequiredAppsReportHtml(
     padding:8px 14px; font-size:13px; cursor:pointer; font-family:inherit;
   }
   .toolbar button:hover { color:var(--fg); border-color:var(--iris); }
+  select#grp {
+    background:var(--ink2); border:1px solid var(--stroke); border-radius:8px; color:var(--fg);
+    padding:8px 12px; font-size:13px; font-family:inherit; min-width:280px; max-width:100%;
+  }
+  select#grp:focus { outline:none; border-color:var(--iris); }
   .counter { color:var(--fg3); font-size:12px; margin:0 0 16px;
              font-family:'JetBrains Mono',ui-monospace,monospace; }
   .section { border:1px solid var(--stroke); border-radius:12px; margin:0 0 12px; overflow:hidden; background:var(--ink1); }
@@ -455,7 +561,7 @@ export function buildRequiredAppsReportHtml(
   .hidden { display:none !important; }
   @media print {
     body { background:#fff; color:#111; }
-    .toolbar, .sec-chev, .pchip, .chip.reset, .filterbar-label { display:none; }
+    .toolbar, .sec-chev, .pchip, .chip.reset, .filterbar-label, select#grp { display:none; }
     .section, .tile, .chip { border-color:#ddd; background:#fff; }
     header.cover { background:#211d4a; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     .section > summary { border-left-color:var(--accent); }
@@ -474,8 +580,11 @@ export function buildRequiredAppsReportHtml(
       <span>By <b>${esc(meta.generatedBy)}</b></span>
       <span>Grouped by <b>${esc(groupingLabel)}</b></span>
       <span>Intent <b>Required only</b></span>
+      ${profileMeta}
     </div>
   </header>
+
+  ${profileNote}
 
   <div class="tiles">
     ${statTile(s.apps, "Required apps", "#6E62E5")}
@@ -483,6 +592,7 @@ export function buildRequiredAppsReportHtml(
     ${statTile(s.groups, "Groups targeted", "#3DDC97")}
     ${statTile(s.broad, "All Users/Devices", "#FFC65C")}
     ${statTile(s.exclusions, "Exclusions", "#FF5C6C")}
+    ${showDevices ? statTile(profile?.deviceCount ?? 0, "Profile devices", "#4FC3F7") : ""}
   </div>
 
   <div class="filterbar">
@@ -491,6 +601,14 @@ export function buildRequiredAppsReportHtml(
       ${platformChips}
       <button class="chip reset" id="resetPlatforms" type="button">Show all</button>
     </div>
+  </div>
+
+  <div class="filterbar">
+    <div class="filterbar-label">Filter by target group</div>
+    <select id="grp">
+      <option value="">All groups &amp; targets</option>
+      ${groupOptions}
+    </select>
   </div>
 
   <div class="toolbar">
@@ -515,6 +633,7 @@ export function buildRequiredAppsReportHtml(
 <script>
   var active = new Set();
   var q = document.getElementById('q');
+  var grp = document.getElementById('grp');
   var counter = document.getElementById('counter');
 
   function toggleAll(open) {
@@ -523,6 +642,7 @@ export function buildRequiredAppsReportHtml(
 
   function apply() {
     var term = q.value.trim().toLowerCase();
+    var group = grp.value;
     var shown = 0, total = 0;
     var apps = {};
 
@@ -531,18 +651,20 @@ export function buildRequiredAppsReportHtml(
       sec.querySelectorAll('tbody tr').forEach(function(tr){
         total++;
         var pOk = active.size === 0 || active.has(tr.getAttribute('data-platform'));
+        var gOk = !group || tr.getAttribute('data-target') === group;
         var tOk = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
-        var hit = pOk && tOk;
+        var hit = pOk && gOk && tOk;
         tr.classList.toggle('hidden', !hit);
         if (hit) { any = true; shown++; apps[tr.getAttribute('data-app')] = 1; }
       });
       sec.classList.toggle('hidden', !any);
-      if (any && (term || active.size)) sec.open = true;
+      if (any && (term || active.size || group)) sec.open = true;
     });
 
     counter.textContent = 'Showing ' + shown + ' of ' + total + ' assignments · '
       + Object.keys(apps).length + ' apps'
-      + (active.size ? ' · platform: ' + Array.from(active).join(', ') : '');
+      + (active.size ? ' · platform: ' + Array.from(active).join(', ') : '')
+      + (group ? ' · group: ' + group : '');
   }
 
   document.querySelectorAll('.pchip').forEach(function(chip){
@@ -558,13 +680,15 @@ export function buildRequiredAppsReportHtml(
     active.clear();
     document.querySelectorAll('.pchip').forEach(function(c){ c.classList.remove('active'); });
     q.value = '';
+    grp.value = '';
     apply();
   });
 
   q.addEventListener('input', apply);
+  grp.addEventListener('change', apply);
 
   document.getElementById('csv').addEventListener('click', function(){
-    var head = ['Application','Platform','App type','Target','Mode','Filter'];
+    var head = ['Application','Platform','App type','Target','Mode','Filter','Devices'];
     var lines = [head.join(',')];
     document.querySelectorAll('tbody tr:not(.hidden)').forEach(function(tr){
       var cells = [
@@ -573,7 +697,8 @@ export function buildRequiredAppsReportHtml(
         tr.getAttribute('data-apptype'),
         tr.getAttribute('data-target'),
         tr.getAttribute('data-mode'),
-        tr.getAttribute('data-filter')
+        tr.getAttribute('data-filter'),
+        tr.getAttribute('data-devices')
       ].map(function(v){ return '"' + String(v || '').replace(/"/g, '""') + '"'; });
       lines.push(cells.join(','));
     });

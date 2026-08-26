@@ -24,6 +24,7 @@ import {
   Home24Regular,
   ArrowSwap24Regular,
   DocumentTable24Regular,
+  DocumentBulletList24Regular,
   Tag24Regular,
   ShieldTask24Regular,
   Warning24Regular,
@@ -43,6 +44,7 @@ export type ToolView =
   | "report"
   | "deviceCompliance"
   | "assignmentReport"
+  | "requiredApps"
   | "groupFinder"
   | "settingsSearch"
   | "filters"
@@ -64,6 +66,7 @@ const GROUPS: GroupDef[] = [
     label: "Reports & Insights",
     tools: [
       { key: "assignmentReport", label: "Assignment Report", icon: <DocumentTable24Regular /> },
+      { key: "requiredApps", label: "Required Apps Report", icon: <DocumentBulletList24Regular /> },
       { key: "map", label: "Assignment Matrix", icon: <Share24Regular /> },
       { key: "deviceCompliance", label: "Device Compliance", icon: <ShieldTask24Regular /> },
       { key: "report", label: "Compliance Report", icon: <ClipboardCheckmark24Regular /> },
