@@ -11,6 +11,7 @@ import {
   ArrowDownloadRegular,
   ArrowUploadRegular,
   TableRegular,
+  DocumentBulletListRegular,
 } from "@fluentui/react-icons";
 
 const useStyles = makeStyles({
@@ -46,6 +47,7 @@ interface Props {
   onExport: () => void;
   onImport: () => void;
   onDiff: () => void;
+  onRequiredAppsReport: () => void;
   canAdd: boolean;
   canDelete: boolean;
   canAnalyze: boolean;
@@ -54,6 +56,7 @@ interface Props {
   canEnableDisable: boolean;
   canExport: boolean;
   canDiff: boolean;
+  showRequiredAppsReport: boolean;
   isLoading: boolean;
   isExporting: boolean;
 }
@@ -72,6 +75,7 @@ export default function PolicyTableToolbar({
   onExport,
   onImport,
   onDiff,
+  onRequiredAppsReport,
   canAdd,
   canDelete,
   canAnalyze,
@@ -80,6 +84,7 @@ export default function PolicyTableToolbar({
   canEnableDisable,
   canExport,
   canDiff,
+  showRequiredAppsReport,
   isLoading,
   isExporting,
 }: Props) {
@@ -187,6 +192,17 @@ export default function PolicyTableToolbar({
       >
         Diff
       </Button>
+      {showRequiredAppsReport && (
+        <Button
+          appearance="subtle"
+          icon={<DocumentBulletListRegular />}
+          disabled={isLoading}
+          onClick={onRequiredAppsReport}
+          title="Generate a report of every Required application, filterable by platform"
+        >
+          Required Apps Report
+        </Button>
+      )}
       <Button
         appearance="subtle"
         icon={<ArrowClockwiseRegular />}

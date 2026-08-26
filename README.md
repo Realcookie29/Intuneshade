@@ -24,7 +24,8 @@ A free community console for Microsoft Intune administrators. Sign in with your 
 | 12 | **Group Membership** — view and manage the users/devices inside Entra ID groups | ✅ Live |
 | 13 | **Backup & Restore** — full-tenant policy backup to one JSON file, selective restore | ✅ Live |
 | 14 | **Audit History** — who changed what and when, with per-event property diffs | ✅ Live |
-| 15 | **memberOf Migration** — finds every dynamic group and administrative unit whose membership rule still uses the `memberOf` operator (retired from November 2026), shows what breaks in Intune, and proposes a replacement rule | ⏳ Temporary |
+| 15 | **Required Apps Report** — one-click report from the Applications tab listing every app assigned as *Required*, filterable per platform (Windows / iOS / macOS / Android / Web) inside the report itself, with CSV export and print-to-PDF | ✅ Live |
+| 16 | **memberOf Migration** — finds every dynamic group and administrative unit whose membership rule still uses the `memberOf` operator (retired from November 2026), shows what breaks in Intune, and proposes a replacement rule | ⏳ Temporary |
 
 ---
 

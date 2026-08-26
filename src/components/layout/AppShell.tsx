@@ -12,6 +12,7 @@ import ConflictDashboard from "../conflicts/ConflictDashboard";
 import AssignmentMatrixPage from "../map/AssignmentMatrixPage";
 import ComplianceReportPage from "../report/ComplianceReportPage";
 import AssignmentReportPage from "../report/AssignmentReportPage";
+import RequiredAppsReportDialog from "../report/RequiredAppsReportDialog";
 import GroupFinderPage from "../groups/GroupFinderPage";
 import PolicySettingsSearchPage from "../search/PolicySettingsSearchPage";
 import AssignmentFiltersPage from "../filters/AssignmentFiltersPage";
@@ -102,6 +103,7 @@ export default function AppShell() {
   const [showEnableDisableDialog, setShowEnableDisableDialog] = useState(false);
   const [showDiffDialog, setShowDiffDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showRequiredAppsDialog, setShowRequiredAppsDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const { rows, isLoading, error: fetchError, refresh } = usePolicies(selectedType);
@@ -215,6 +217,8 @@ export default function AppShell() {
   const canEnableDisable = distinctPolicies.length > 0 && selectedType === "configurationPolicies";
   const canExport = selectedRows.length > 0;
   const canDiff = distinctPolicies.length === 2;
+  // Required-apps reporting only makes sense where install intents exist (Applications).
+  const showRequiredAppsReport = selectedType === "mobileApps";
 
   const showAnalysisPanel = panelOpen || scriptPanelOpen;
 
@@ -321,6 +325,7 @@ export default function AppShell() {
                   onExport={handleExport}
                   onImport={() => setShowImportDialog(true)}
                   onDiff={() => setShowDiffDialog(true)}
+                  onRequiredAppsReport={() => setShowRequiredAppsDialog(true)}
                   canAdd={canAdd}
                   canDelete={canDelete}
                   canAnalyze={canAnalyze}
@@ -329,6 +334,7 @@ export default function AppShell() {
                   canEnableDisable={canEnableDisable}
                   canExport={canExport}
                   canDiff={canDiff}
+                  showRequiredAppsReport={showRequiredAppsReport}
                   isLoading={isLoading || groupsLoading}
                   isExporting={isExporting}
                 />
@@ -427,6 +433,13 @@ export default function AppShell() {
           policyA={selectedRows.filter((r) => r.policyId === distinctPolicies[0].policyId)}
           policyB={selectedRows.filter((r) => r.policyId === distinctPolicies[1].policyId)}
           onClose={() => setShowDiffDialog(false)}
+        />
+      )}
+
+      {showRequiredAppsDialog && selectedType === "mobileApps" && (
+        <RequiredAppsReportDialog
+          rows={rows}
+          onClose={() => setShowRequiredAppsDialog(false)}
         />
       )}
 
