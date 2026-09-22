@@ -14,7 +14,9 @@ import { getTenantName } from "../../services/graphClient";
 import {
   buildReportHtml, downloadReportHtml,
   type ReportGrouping, type ReportOptions,
+  assignmentReportScript,
 } from "../../services/assignmentReportService";
+import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -132,10 +134,7 @@ export default function AssignmentReportPage() {
               </Button>
               <Button
                 icon={<OpenRegular />}
-                onClick={() => {
-                  const w = window.open("", "_blank");
-                  if (w) { w.document.write(html); w.document.close(); }
-                }}
+                onClick={() => openReportInNewTab(html, assignmentReportScript)}
               >
                 Open in new tab
               </Button>
@@ -213,7 +212,9 @@ export default function AssignmentReportPage() {
           )}
 
           {status === "ready" && (
-            <iframe className={styles.frame} title="Assignment report preview" srcDoc={html} />
+            <iframe className={styles.frame} title="Assignment report preview" srcDoc={html}
+              onLoad={(e) => wireReport(e.currentTarget.contentWindow, assignmentReportScript)}
+            />
           )}
         </section>
       </div>

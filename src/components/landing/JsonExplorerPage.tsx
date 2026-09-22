@@ -13,7 +13,9 @@ import { parseFilesToRecords, type ParseResult } from "../../services/offlineImp
 import { SAMPLE_EXPORT_JSON } from "../../services/sampleExport";
 import {
   buildReportHtml, downloadReportHtml, type ReportGrouping, type ReportOptions,
+  assignmentReportScript,
 } from "../../services/assignmentReportService";
+import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
 
 const C = {
   bg: "#FAF9F6", ink: "#201D19", ink2: "#57524B", ink3: "#8A847A",
@@ -366,7 +368,7 @@ export default function JsonExplorerPage({ onBack }: { onBack: () => void }) {
 
             <div className={styles.actions}>
               <Button appearance="primary" icon={<ArrowDownloadRegular />} onClick={() => downloadReportHtml(html, "imported", dateStamp)}>Download</Button>
-              <Button icon={<OpenRegular />} onClick={() => { const w = window.open("", "_blank"); if (w) { w.document.write(html); w.document.close(); } }}>Open</Button>
+              <Button icon={<OpenRegular />} onClick={() => openReportInNewTab(html, assignmentReportScript)}>Open</Button>
               <Button appearance="subtle" icon={<DocumentArrowUpRegular />} onClick={() => inputRef.current?.click()}>Add files</Button>
             </div>
 
@@ -379,7 +381,9 @@ export default function JsonExplorerPage({ onBack }: { onBack: () => void }) {
           </aside>
 
           <section className={styles.preview}>
-            <iframe className={styles.frame} title="Imported assignment report" srcDoc={html} />
+            <iframe className={styles.frame} title="Imported assignment report" srcDoc={html}
+              onLoad={(e) => wireReport(e.currentTarget.contentWindow, assignmentReportScript)}
+            />
           </section>
         </div>
       )}

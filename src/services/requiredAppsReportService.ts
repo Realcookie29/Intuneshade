@@ -1,4 +1,5 @@
 import type { PolicyRow } from "../types/policyTypes";
+import { inlineReportScript } from "../utils/reportInteractivity";
 
 export type AppPlatform = "Windows" | "iOS/iPadOS" | "macOS" | "Android" | "Web" | "Other";
 
@@ -389,6 +390,120 @@ function statTile(value: number | string, label: string, accent?: string): strin
   </div>`;
 }
 
+/**
+ * Filters, search and CSV export of the Required Apps report. Self-contained —
+ * see utils/reportInteractivity for why it is a function and not an inline script.
+ */
+export function requiredAppsReportScript(win: Window): void {
+  const w = win as Window & { __reportWired?: boolean };
+  const doc = win.document;
+  const active = new Set<string>();
+  const q = doc.getElementById("q") as HTMLInputElement | null;
+  const grp = doc.getElementById("grp") as HTMLSelectElement | null;
+  const counter = doc.getElementById("counter");
+  if (w.__reportWired || !q || !grp || !counter) return;
+  w.__reportWired = true;
+
+  function toggleAll(open: boolean) {
+    doc.querySelectorAll<HTMLDetailsElement>("details.section:not(.hidden)").forEach(function (d) {
+      d.open = open;
+    });
+  }
+
+  function apply() {
+    const term = q!.value.trim().toLowerCase();
+    const group = grp!.value;
+    let shown = 0;
+    let total = 0;
+    const apps: Record<string, number> = {};
+
+    doc.querySelectorAll<HTMLDetailsElement>("details.section").forEach(function (sec) {
+      let any = false;
+      sec.querySelectorAll("tbody tr").forEach(function (tr) {
+        total++;
+        const pOk = active.size === 0 || active.has(tr.getAttribute("data-platform") || "");
+        const gOk = !group || tr.getAttribute("data-target") === group;
+        const tOk = !term || (tr.textContent || "").toLowerCase().indexOf(term) !== -1;
+        const hit = pOk && gOk && tOk;
+        tr.classList.toggle("hidden", !hit);
+        if (hit) {
+          any = true;
+          shown++;
+          apps[tr.getAttribute("data-app") || ""] = 1;
+        }
+      });
+      sec.classList.toggle("hidden", !any);
+      if (any && (term || active.size || group)) sec.open = true;
+    });
+
+    counter!.textContent =
+      "Showing " + shown + " of " + total + " assignments · " +
+      Object.keys(apps).length + " apps" +
+      (active.size ? " · platform: " + Array.from(active).join(", ") : "") +
+      (group ? " · group: " + group : "");
+  }
+
+  doc.querySelectorAll(".pchip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      const p = chip.getAttribute("data-platform") || "";
+      if (active.has(p)) {
+        active.delete(p);
+        chip.classList.remove("active");
+      } else {
+        active.add(p);
+        chip.classList.add("active");
+      }
+      apply();
+    });
+  });
+
+  doc.getElementById("resetPlatforms")?.addEventListener("click", function () {
+    active.clear();
+    doc.querySelectorAll(".pchip").forEach(function (c) {
+      c.classList.remove("active");
+    });
+    q.value = "";
+    grp.value = "";
+    apply();
+  });
+
+  q.addEventListener("input", apply);
+  grp.addEventListener("change", apply);
+  doc.getElementById("expandAll")?.addEventListener("click", function () { toggleAll(true); });
+  doc.getElementById("collapseAll")?.addEventListener("click", function () { toggleAll(false); });
+  doc.getElementById("print")?.addEventListener("click", function () { win.print(); });
+
+  doc.getElementById("csv")?.addEventListener("click", function () {
+    const head = ["Application", "Platform", "App type", "Target", "Mode", "Filter", "Devices"];
+    const lines = [head.join(",")];
+    doc.querySelectorAll("tbody tr:not(.hidden)").forEach(function (tr) {
+      const cells = [
+        tr.getAttribute("data-appname"),
+        tr.getAttribute("data-platform"),
+        tr.getAttribute("data-apptype"),
+        tr.getAttribute("data-target"),
+        tr.getAttribute("data-mode"),
+        tr.getAttribute("data-filter"),
+        tr.getAttribute("data-devices"),
+      ].map(function (v) {
+        return '"' + String(v || "").replace(/"/g, '""') + '"';
+      });
+      lines.push(cells.join(","));
+    });
+    const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = doc.createElement("a");
+    a.href = url;
+    a.download = "required-applications.csv";
+    doc.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  apply();
+}
+
 /** Produces a fully self-contained HTML document (inline CSS + JS, no externals). */
 export function buildRequiredAppsReportHtml(
   records: RequiredAppRecord[],
@@ -613,10 +728,10 @@ export function buildRequiredAppsReportHtml(
 
   <div class="toolbar">
     <input type="text" id="q" placeholder="Search app, group or filter…">
-    <button type="button" onclick="toggleAll(true)">Expand all</button>
-    <button type="button" onclick="toggleAll(false)">Collapse all</button>
+    <button type="button" id="expandAll">Expand all</button>
+    <button type="button" id="collapseAll">Collapse all</button>
     <button type="button" id="csv">Export CSV</button>
-    <button type="button" onclick="window.print()">Print / PDF</button>
+    <button type="button" id="print">Print / PDF</button>
   </div>
 
   <div class="counter" id="counter"></div>
@@ -630,91 +745,7 @@ export function buildRequiredAppsReportHtml(
   </footer>
 </div>
 
-<script>
-  var active = new Set();
-  var q = document.getElementById('q');
-  var grp = document.getElementById('grp');
-  var counter = document.getElementById('counter');
-
-  function toggleAll(open) {
-    document.querySelectorAll('details.section:not(.hidden)').forEach(function(d){ d.open = open; });
-  }
-
-  function apply() {
-    var term = q.value.trim().toLowerCase();
-    var group = grp.value;
-    var shown = 0, total = 0;
-    var apps = {};
-
-    document.querySelectorAll('details.section').forEach(function(sec){
-      var any = false;
-      sec.querySelectorAll('tbody tr').forEach(function(tr){
-        total++;
-        var pOk = active.size === 0 || active.has(tr.getAttribute('data-platform'));
-        var gOk = !group || tr.getAttribute('data-target') === group;
-        var tOk = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
-        var hit = pOk && gOk && tOk;
-        tr.classList.toggle('hidden', !hit);
-        if (hit) { any = true; shown++; apps[tr.getAttribute('data-app')] = 1; }
-      });
-      sec.classList.toggle('hidden', !any);
-      if (any && (term || active.size || group)) sec.open = true;
-    });
-
-    counter.textContent = 'Showing ' + shown + ' of ' + total + ' assignments · '
-      + Object.keys(apps).length + ' apps'
-      + (active.size ? ' · platform: ' + Array.from(active).join(', ') : '')
-      + (group ? ' · group: ' + group : '');
-  }
-
-  document.querySelectorAll('.pchip').forEach(function(chip){
-    chip.addEventListener('click', function(){
-      var p = chip.getAttribute('data-platform');
-      if (active.has(p)) { active.delete(p); chip.classList.remove('active'); }
-      else { active.add(p); chip.classList.add('active'); }
-      apply();
-    });
-  });
-
-  document.getElementById('resetPlatforms').addEventListener('click', function(){
-    active.clear();
-    document.querySelectorAll('.pchip').forEach(function(c){ c.classList.remove('active'); });
-    q.value = '';
-    grp.value = '';
-    apply();
-  });
-
-  q.addEventListener('input', apply);
-  grp.addEventListener('change', apply);
-
-  document.getElementById('csv').addEventListener('click', function(){
-    var head = ['Application','Platform','App type','Target','Mode','Filter','Devices'];
-    var lines = [head.join(',')];
-    document.querySelectorAll('tbody tr:not(.hidden)').forEach(function(tr){
-      var cells = [
-        tr.getAttribute('data-appname'),
-        tr.getAttribute('data-platform'),
-        tr.getAttribute('data-apptype'),
-        tr.getAttribute('data-target'),
-        tr.getAttribute('data-mode'),
-        tr.getAttribute('data-filter'),
-        tr.getAttribute('data-devices')
-      ].map(function(v){ return '"' + String(v || '').replace(/"/g, '""') + '"'; });
-      lines.push(cells.join(','));
-    });
-    var blob = new Blob([lines.join('\\r\\n')], { type: 'text/csv;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'required-applications.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
-
-  apply();
-</script>
+${inlineReportScript(requiredAppsReportScript)}
 </body>
 </html>`;
 }

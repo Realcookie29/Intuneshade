@@ -1,6 +1,7 @@
 import type { AssignmentRecord } from "./assignmentScanService";
 import { POLICY_DEFINITIONS } from "../utils/policyConfig";
 import type { PolicyType } from "../types/policyTypes";
+import { inlineReportScript } from "../utils/reportInteractivity";
 
 export type ReportGrouping = "group" | "policyType" | "policy";
 
@@ -211,6 +212,43 @@ function statTile(value: number | string, label: string, accent?: string): strin
   </div>`;
 }
 
+/**
+ * Search and expand/collapse of the Assignment report. Self-contained — see
+ * utils/reportInteractivity for why it is a function and not an inline script.
+ */
+export function assignmentReportScript(win: Window): void {
+  const w = win as Window & { __reportWired?: boolean };
+  const doc = win.document;
+  const q = doc.getElementById("q") as HTMLInputElement | null;
+  if (w.__reportWired || !q) return;
+  w.__reportWired = true;
+
+  function toggleAll(open: boolean) {
+    doc.querySelectorAll<HTMLDetailsElement>("details.section").forEach(function (d) {
+      d.open = open;
+    });
+  }
+
+  doc.getElementById("expandAll")?.addEventListener("click", function () { toggleAll(true); });
+  doc.getElementById("collapseAll")?.addEventListener("click", function () { toggleAll(false); });
+  doc.getElementById("print")?.addEventListener("click", function () { win.print(); });
+
+  q.addEventListener("input", function () {
+    const term = q.value.trim().toLowerCase();
+    doc.querySelectorAll<HTMLDetailsElement>("details.section").forEach(function (sec) {
+      let anyRow = false;
+      sec.querySelectorAll("tbody tr").forEach(function (tr) {
+        const hit = !term || (tr.textContent || "").toLowerCase().indexOf(term) !== -1;
+        tr.classList.toggle("hidden", !hit);
+        if (hit) anyRow = true;
+      });
+      const titleHit = (sec.querySelector("summary")?.textContent || "").toLowerCase().indexOf(term) !== -1;
+      sec.classList.toggle("hidden", !!term && !anyRow && !titleHit);
+      if (term) sec.open = true;
+    });
+  });
+}
+
 /** Produces a fully self-contained HTML document (inline CSS + JS, no externals). */
 export function buildReportHtml(
   records: AssignmentRecord[],
@@ -356,9 +394,9 @@ export function buildReportHtml(
 
   <div class="toolbar">
     <input type="text" id="q" placeholder="Filter this report… (policy, group, filter)">
-    <button onclick="toggleAll(true)">Expand all</button>
-    <button onclick="toggleAll(false)">Collapse all</button>
-    <button onclick="window.print()">Print / PDF</button>
+    <button id="expandAll">Expand all</button>
+    <button id="collapseAll">Collapse all</button>
+    <button id="print">Print / PDF</button>
   </div>
 
   <div id="report">
@@ -370,26 +408,7 @@ export function buildReportHtml(
   </footer>
 </div>
 
-<script>
-  function toggleAll(open) {
-    document.querySelectorAll('details.section').forEach(function(d){ d.open = open; });
-  }
-  var q = document.getElementById('q');
-  q.addEventListener('input', function() {
-    var term = q.value.trim().toLowerCase();
-    document.querySelectorAll('details.section').forEach(function(sec){
-      var anyRow = false;
-      sec.querySelectorAll('tbody tr').forEach(function(tr){
-        var hit = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
-        tr.classList.toggle('hidden', !hit);
-        if (hit) anyRow = true;
-      });
-      var titleHit = sec.querySelector('summary').textContent.toLowerCase().indexOf(term) !== -1;
-      sec.classList.toggle('hidden', !!term && !anyRow && !titleHit);
-      if (term) sec.open = true;
-    });
-  });
-</script>
+${inlineReportScript(assignmentReportScript)}
 </body>
 </html>`;
 }

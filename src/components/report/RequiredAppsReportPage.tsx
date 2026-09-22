@@ -27,7 +27,9 @@ import {
   type RequiredAppsGrouping,
   type RequiredAppsReportOptions,
   type ProfileReportInfo,
+  requiredAppsReportScript,
 } from "../../services/requiredAppsReportService";
+import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -247,10 +249,7 @@ export default function RequiredAppsReportPage() {
             <Button
               icon={<OpenRegular />}
               disabled={!hasData}
-              onClick={() => {
-                const w = window.open("", "_blank");
-                if (w) { w.document.write(html); w.document.close(); }
-              }}
+              onClick={() => openReportInNewTab(html, requiredAppsReportScript)}
             >
               Open in new tab
             </Button>
@@ -429,7 +428,9 @@ export default function RequiredAppsReportPage() {
               </Text>
             </div>
           ) : (
-            <iframe className={styles.frame} title="Required applications report" srcDoc={html} />
+            <iframe className={styles.frame} title="Required applications report" srcDoc={html}
+              onLoad={(e) => wireReport(e.currentTarget.contentWindow, requiredAppsReportScript)}
+            />
           )}
         </section>
       </div>
