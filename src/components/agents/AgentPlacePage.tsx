@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -27,6 +27,7 @@ import {
 import PageHeader from "../layout/PageHeader";
 import ModelSettingsPanel from "./ModelSettingsPanel";
 import BenchmarkResults from "./BenchmarkResults";
+import AgentOffice from "./AgentOffice";
 import { ACCENTS, FONTS } from "../../theme/theme";
 import { controlsForProfile } from "../../baseline";
 import type { Profile } from "../../baseline/types";
@@ -50,6 +51,8 @@ const AGENTS: AgentDef[] = [
   { id: "advisor", name: "Advisor", role: "Explains what's missing and how to fix it", icon: <Lightbulb24Regular />, usesAi: true },
   { id: "reporter", name: "Reporter", role: "Scores everything and writes the report", icon: <DocumentData24Regular />, usesAi: true },
 ];
+
+const VIEW_KEY = "intuneshade.agentView";
 
 const AGENT_COLOR: Record<AgentId, string> = {
   collector: ACCENTS.iris,
@@ -291,6 +294,13 @@ export default function AgentPlacePage() {
   useApiKeyStore((s) => s.apiKey);
   const model = currentModel();
   const count = controlsForProfile(profile).length;
+  const [view, setView] = useState<"office" | "cards">(() => {
+    try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "office"; } catch { return "office"; }
+  });
+  const changeView = (v: "office" | "cards") => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* ignore */ }
+  };
 
   return (
     <div className={styles.root}>
@@ -309,6 +319,10 @@ export default function AgentPlacePage() {
           </TabList>
           <Text className={styles.role}>{count} controls</Text>
           <div style={{ flex: 1 }} />
+          <TabList selectedValue={view} onTabSelect={(_, d) => changeView(d.value as "office" | "cards")} size="small" appearance="subtle">
+            <Tab value="office">Office</Tab>
+            <Tab value="cards">Cards</Tab>
+          </TabList>
           <Popover positioning="below-end" withArrow>
             <PopoverTrigger disableButtonEnhancement>
               <Button icon={<SettingsRegular />} disabled={running}>
@@ -326,14 +340,18 @@ export default function AgentPlacePage() {
           )}
         </div>
 
-        <div className={styles.lane}>
-          {AGENTS.map((a, i) => (
-            <Fragment key={a.id}>
-              <AgentCard def={a} />
-              {i < AGENTS.length - 1 && <Connector from={a.id} />}
-            </Fragment>
-          ))}
-        </div>
+        {view === "office" ? (
+          <AgentOffice />
+        ) : (
+          <div className={styles.lane}>
+            {AGENTS.map((a, i) => (
+              <Fragment key={a.id}>
+                <AgentCard def={a} />
+                {i < AGENTS.length - 1 && <Connector from={a.id} />}
+              </Fragment>
+            ))}
+          </div>
+        )}
 
         {error && <Text className={styles.error}>Benchmark stopped: {error}</Text>}
 

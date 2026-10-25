@@ -54,6 +54,8 @@ interface AgentRunState {
 }
 
 let logSeq = 0;
+// Global, never reset — animations key off it, so a new run must not reuse an old value.
+let handoffSeq = 0;
 
 export const useAgentRunStore = create<AgentRunState>((set) => ({
   running: false,
@@ -84,7 +86,6 @@ export const useAgentRunStore = create<AgentRunState>((set) => ({
   updateAgent: (id, patch) => set((s) => ({ agents: { ...s.agents, [id]: { ...s.agents[id], ...patch } } })),
   addLog: (agent, kind, text) =>
     set((s) => ({ log: [...s.log, { id: ++logSeq, ts: Date.now(), agent, kind, text }].slice(-400) })),
-  handOff: (from, to, label) =>
-    set((s) => ({ handoff: { from, to, label, seq: (s.handoff?.seq ?? 0) + 1 } })),
+  handOff: (from, to, label) => set({ handoff: { from, to, label, seq: ++handoffSeq } }),
   setResults: (patch) => set(patch),
 }));
