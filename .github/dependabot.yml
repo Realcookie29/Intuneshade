@@ -1,4 +1,6 @@
-# Keeps the SHA-pinned GitHub Actions and npm dependencies current.
+# Keeps the SHA-pinned GitHub Actions and npm dependencies current. Major
+# versions are skipped (they need manual migration); security updates still
+# arrive through Dependabot security updates.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,7 +10,13 @@ updates:
     directory: /
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /api
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

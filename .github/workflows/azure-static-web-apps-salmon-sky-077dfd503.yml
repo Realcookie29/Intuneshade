@@ -57,6 +57,8 @@ jobs:
           app_location: "dist"
           api_location: "api"
           output_location: "."
+          # Dependabot PRs get no secrets: still build and test, skip the preview deploy.
+          skip_deploy_on_missing_secrets: true
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
