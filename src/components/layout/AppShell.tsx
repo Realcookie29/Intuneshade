@@ -43,6 +43,7 @@ import { useAnalysisStore } from "../../store/analysisStore";
 import { useApiKeyStore } from "../../store/apiKeyStore";
 import { useDashboardStore } from "../../store/dashboardStore";
 import { exportPoliciesToJson } from "../../services/bulkActionsService";
+import { RESUME_TOOL_KEY } from "../../services/graphClient";
 
 const useStyles = makeStyles({
   root: {
@@ -94,7 +95,15 @@ export default function AppShell() {
   const styles = useStyles();
 
   const [selectedType, setSelectedType] = useState<PolicyType | null>(null);
-  const [activeTool, setActiveTool] = useState<ToolView | null>("home");
+  // After a consent redirect, reopen the page that asked for it.
+  const [activeTool, setActiveTool] = useState<ToolView | null>(() => {
+    try {
+      const resume = sessionStorage.getItem(RESUME_TOOL_KEY);
+      sessionStorage.removeItem(RESUME_TOOL_KEY);
+      if (resume === "agents") return "agents";
+    } catch { /* ignore */ }
+    return "home";
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRows, setSelectedRows] = useState<PolicyRow[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);

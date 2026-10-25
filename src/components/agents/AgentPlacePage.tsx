@@ -288,7 +288,14 @@ function ActivityFeed() {
 
 export default function AgentPlacePage() {
   const styles = useStyles();
-  const { running, profile, setProfile, report, findings, advice, error } = useAgentRunStore();
+  // Narrow selectors: the run store changes many times per second while agents work.
+  const running = useAgentRunStore((s) => s.running);
+  const profile = useAgentRunStore((s) => s.profile);
+  const setProfile = useAgentRunStore((s) => s.setProfile);
+  const report = useAgentRunStore((s) => s.report);
+  const findings = useAgentRunStore((s) => s.findings);
+  const advice = useAgentRunStore((s) => s.advice);
+  const error = useAgentRunStore((s) => s.error);
   // Subscribe so badges re-render when the model or key changes.
   useAgentModelStore((s) => s.engine);
   useApiKeyStore((s) => s.apiKey);

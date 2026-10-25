@@ -69,6 +69,11 @@ const useStyles = makeStyles({
     overflow: "hidden",
     border: "1px solid rgba(255,255,255,0.08)",
     backgroundColor: "#141823",
+    contain: "layout paint",
+  },
+  /** Ambient animations stop when the office is quiet or scrolled out of view. */
+  paused: {
+    "& *, & *::after": { animationPlayState: "paused !important" },
   },
   stage: {
     position: "absolute",
@@ -394,6 +399,9 @@ export default function AgentOffice() {
   const s = useStyles();
   const frameRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const [visible, setVisible] = useState(true);
+  const runId = useAgentRunStore((st) => st.runId);
+  const [quietRun, setQuietRun] = useState(0);
   const agents = useAgentRunStore((st) => st.agents);
   const handoff = useAgentRunStore((st) => st.handoff);
   const running = useAgentRunStore((st) => st.running);
@@ -408,8 +416,18 @@ export default function AgentOffice() {
     if (!el) return;
     const ro = new ResizeObserver(() => setScale(el.clientWidth / STAGE_W));
     ro.observe(el);
-    return () => ro.disconnect();
+    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
+    io.observe(el);
+    return () => { ro.disconnect(); io.disconnect(); };
   }, []);
+
+  // Keep animating a few seconds after a run so the last walk-back finishes.
+  useEffect(() => {
+    if (running) return;
+    const t = window.setTimeout(() => setQuietRun(runId), 6000);
+    return () => clearTimeout(t);
+  }, [running, runId]);
+  const animate = visible && (running || quietRun !== runId);
 
   // A hand-off sends the finished agent to the next desk with a folder, then home.
   useEffect(() => {
@@ -431,7 +449,7 @@ export default function AgentOffice() {
       : "Press Start benchmark";
 
   return (
-    <div ref={frameRef} className={s.frame} style={{ height: STAGE_H * scale }} role="img"
+    <div ref={frameRef} className={mergeClasses(s.frame, !animate && s.paused)} style={{ height: STAGE_H * scale }} role="img"
       aria-label="Animated office showing the four benchmark agents at work">
       <div className={s.stage} style={{ transform: `scale(${scale})` }}>
         {/* room */}

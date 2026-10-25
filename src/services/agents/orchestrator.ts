@@ -6,7 +6,8 @@ import { assessControl, controlsForProfile, score } from "../../baseline";
 import type { Finding, Profile } from "../../baseline/types";
 import { useAgentRunStore, type AgentId } from "../../store/agentRunStore";
 import { useAgentModelStore } from "../../store/agentModelStore";
-import { getTenantName } from "../graphClient";
+import { ensureScopes, getTenantName } from "../graphClient";
+import { BASELINE_SCOPES } from "../../auth/msalConfig";
 import { currentModel } from "../ai/provider";
 import { collectSnapshot, sourceSize } from "./collector";
 import { advise } from "./advisor";
@@ -39,6 +40,12 @@ export async function runBenchmark(profile: Profile): Promise<void> {
   try {
     // ── Collector ──────────────────────────────────────────────────────────────
     updateAgent("collector", { status: "working", task: "Requesting read access", progress: 0 });
+    addLog("collector", "info", "Checking read permissions…");
+    if ((await ensureScopes(BASELINE_SCOPES, "agents")) === "redirecting") {
+      addLog("collector", "info", "Redirecting to Microsoft to consent to read-only permissions…");
+      useAgentRunStore.getState().finish();
+      return;
+    }
     addLog("collector", "info", "Starting read-only collection. No changes are made to the tenant.");
     const snapshot = await collectSnapshot({
       signal,

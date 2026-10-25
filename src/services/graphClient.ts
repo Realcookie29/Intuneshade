@@ -1,3 +1,4 @@
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { msalInstance } from "../auth/msalInstance";
 import { loginRequest } from "../auth/msalConfig";
 import type { GraphListResponse } from "../types/graphTypes";
@@ -24,6 +25,29 @@ async function getToken(scopes?: string[]): Promise<string> {
   } catch {
     const result = await msalInstance.acquireTokenPopup(req);
     return result.accessToken;
+  }
+}
+
+/** sessionStorage key: the page to reopen after a consent redirect. */
+export const RESUME_TOOL_KEY = "intuneshade.resumeTool";
+
+/**
+ * Makes sure extra scopes are consented before a feature starts calling Graph.
+ * If consent is missing it redirects to Microsoft (popups need a redirect-bridge
+ * page in MSAL v5 and time out without one) and returns "redirecting"; after
+ * the round-trip the app reopens `resumeTool`.
+ */
+export async function ensureScopes(scopes: string[], resumeTool: string): Promise<"ok" | "redirecting"> {
+  const account = msalInstance.getAllAccounts()[0];
+  if (!account) throw new Error("Not signed in");
+  try {
+    await msalInstance.acquireTokenSilent({ scopes, account });
+    return "ok";
+  } catch (err) {
+    if (!(err instanceof InteractionRequiredAuthError)) throw err;
+    try { sessionStorage.setItem(RESUME_TOOL_KEY, resumeTool); } catch { /* ignore */ }
+    await msalInstance.acquireTokenRedirect({ scopes, account });
+    return "redirecting";
   }
 }
 

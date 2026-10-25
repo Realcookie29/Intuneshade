@@ -33,6 +33,8 @@ const idle = (): AgentState => ({ status: "idle", task: "Waiting", progress: 0 }
 
 interface AgentRunState {
   running: boolean;
+  /** Increments on every start — lets views tell runs apart. */
+  runId: number;
   profile: Profile;
   agents: Record<AgentId, AgentState>;
   log: LogEntry[];
@@ -59,6 +61,7 @@ let handoffSeq = 0;
 
 export const useAgentRunStore = create<AgentRunState>((set) => ({
   running: false,
+  runId: 0,
   profile: "L1",
   agents: { collector: idle(), assessor: idle(), advisor: idle(), reporter: idle() },
   log: [],
@@ -81,7 +84,7 @@ export const useAgentRunStore = create<AgentRunState>((set) => ({
       report: null,
       error: null,
     }),
-  start: () => set({ running: true, error: null }),
+  start: () => set((s) => ({ running: true, error: null, runId: s.runId + 1 })),
   finish: (error) => set({ running: false, error: error ?? null }),
   updateAgent: (id, patch) => set((s) => ({ agents: { ...s.agents, [id]: { ...s.agents[id], ...patch } } })),
   addLog: (agent, kind, text) =>
