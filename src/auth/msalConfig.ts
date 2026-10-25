@@ -31,12 +31,18 @@ export const loginRequest: PopupRequest = {
 };
 
 /**
- * Extra read-only scopes for the IntuneShade Baseline benchmark. Requested on
- * demand (incremental consent) when a benchmark starts — not at sign-in — so
- * users who never run a benchmark are never asked for them.
+ * Extra read-only scopes for the CIS L1 benchmark. Requested on demand
+ * (incremental consent) when a benchmark starts — not at sign-in — so users who
+ * never run a benchmark are never asked for them. Intune read access is covered
+ * by the ReadWrite scopes above.
  */
 export const BASELINE_SCOPES = [
   ...loginRequest.scopes,
-  "Policy.Read.All",                 // Conditional Access, security defaults, authorization + auth-methods policies
-  "RoleManagement.Read.Directory",   // Privileged role members
+  "Policy.Read.All",                         // CA, authorization, auth methods, device registration, app management policies
+  "RoleManagement.Read.Directory",           // role definitions, assignments, eligibility
+  "RoleManagementPolicy.Read.Directory",     // PIM approval settings
+  "AuditLog.Read.All",                       // userRegistrationDetails (MFA capable)
+  "UserAuthenticationMethod.Read.All",       // userRegistrationDetails, per-user MFA state
+  "AccessReview.Read.All",                   // access review definitions
+  "OnPremDirectorySynchronization.Read.All", // password hash sync
 ];

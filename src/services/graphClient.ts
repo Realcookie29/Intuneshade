@@ -3,7 +3,35 @@ import { msalInstance } from "../auth/msalInstance";
 import { loginRequest } from "../auth/msalConfig";
 import type { GraphListResponse } from "../types/graphTypes";
 
-const BASE_URL = "https://graph.microsoft.com/beta";
+const GRAPH_ROOT = "https://graph.microsoft.com";
+const BASE_URL = `${GRAPH_ROOT}/beta`;
+
+/**
+ * Resolves a request path to a full URL. Paths default to /beta (the app's
+ * historical base); a path may also name its version explicitly
+ * ("/v1.0/…" or "/beta/…"), or be a full Graph URL such as an @odata.nextLink.
+ */
+function toUrl(path: string): string {
+  if (path.startsWith(GRAPH_ROOT)) return path;
+  if (path.startsWith("/v1.0/") || path.startsWith("/beta/")) return `${GRAPH_ROOT}${path}`;
+  return `${BASE_URL}${path}`;
+}
+
+/** A failed Graph call. `status` lets callers tell missing permissions (403) from absent endpoints (400/404). */
+export class GraphError extends Error {
+  readonly status: number;
+  readonly path: string;
+  constructor(method: string, path: string, status: number, body: string) {
+    super(`Graph API ${method} ${path} → ${status}: ${body}`);
+    this.name = "GraphError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
+const RETRY_STATUS = new Set([429, 503, 504]);
+const MAX_RETRIES = 3;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Acquires a Graph token. `scopes` lets a feature ask for extra (read) scopes on
@@ -53,18 +81,25 @@ export async function ensureScopes(scopes: string[], resumeTool: string): Promis
 
 async function request(method: string, path: string, body?: unknown, scopes?: string[]): Promise<unknown> {
   const token = await getToken(scopes);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(toUrl(path), {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    // Throttled or briefly unavailable: wait as instructed (Retry-After, seconds) and retry.
+    if (!RETRY_STATUS.has(res.status) || attempt >= MAX_RETRIES) break;
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 30) * 1000 : 1000 * 2 ** attempt);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`Graph API ${method} ${path} → ${res.status}: ${text}`);
+    throw new GraphError(method, path, res.status, text);
   }
 
   // Read body as text first — some endpoints return 200 with an empty body
@@ -80,7 +115,7 @@ export async function graphGet<T>(path: string, scopes?: string[]): Promise<T> {
 /** GET an OData $count endpoint (requires the ConsistencyLevel: eventual header). */
 export async function graphGetCount(path: string): Promise<number> {
   const token = await getToken();
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(toUrl(path), {
     headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: "eventual" },
   });
   if (!res.ok) throw new Error(`Graph API GET ${path} → ${res.status}`);
@@ -94,11 +129,8 @@ export async function graphGetAll<T>(path: string, scopes?: string[]): Promise<T
   let nextPath: string | null = path;
 
   while (nextPath) {
-    const url = nextPath.startsWith("https://")
-      ? nextPath.replace("https://graph.microsoft.com/beta", "")
-      : nextPath;
-
-    const page = (await request("GET", url, undefined, scopes)) as GraphListResponse<T>;
+    // nextLinks are absolute URLs; toUrl passes them through with their own version.
+    const page = (await request("GET", nextPath, undefined, scopes)) as GraphListResponse<T>;
     results.push(...(page.value ?? []));
 
     nextPath = page["@odata.nextLink"] ?? null;

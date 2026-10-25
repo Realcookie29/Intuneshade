@@ -20,6 +20,7 @@ import {
   DatabaseSearch24Regular,
   DocumentData24Regular,
   Lightbulb24Regular,
+  OptionsRegular,
   PlayRegular,
   SettingsRegular,
   StopRegular,
@@ -28,9 +29,10 @@ import PageHeader from "../layout/PageHeader";
 import ModelSettingsPanel from "./ModelSettingsPanel";
 import BenchmarkResults from "./BenchmarkResults";
 import AgentOffice from "./AgentOffice";
+import RunOptionsPanel from "./RunOptionsPanel";
 import { ACCENTS, FONTS } from "../../theme/theme";
-import { controlsForProfile } from "../../baseline";
-import type { Profile } from "../../baseline/types";
+import { CHECKS } from "../../baseline";
+import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
 import { useAgentRunStore, type AgentId, type LogEntry } from "../../store/agentRunStore";
 import { useAgentModelStore } from "../../store/agentModelStore";
 import { useApiKeyStore } from "../../store/apiKeyStore";
@@ -47,7 +49,7 @@ interface AgentDef {
 
 const AGENTS: AgentDef[] = [
   { id: "collector", name: "Collector", role: "Reads your tenant via Microsoft Graph (read-only)", icon: <DatabaseSearch24Regular />, usesAi: false },
-  { id: "assessor", name: "Assessor", role: "Checks it against the IntuneShade Baseline (CIS / NIS2)", icon: <ClipboardTaskListLtr24Regular />, usesAi: false },
+  { id: "assessor", name: "Assessor", role: "Evaluates the CIS L1 tenant checks (with a NIS2 view)", icon: <ClipboardTaskListLtr24Regular />, usesAi: false },
   { id: "advisor", name: "Advisor", role: "Explains what's missing and how to fix it", icon: <Lightbulb24Regular />, usesAi: true },
   { id: "reporter", name: "Reporter", role: "Scores everything and writes the report", icon: <DocumentData24Regular />, usesAi: true },
 ];
@@ -290,17 +292,16 @@ export default function AgentPlacePage() {
   const styles = useStyles();
   // Narrow selectors: the run store changes many times per second while agents work.
   const running = useAgentRunStore((s) => s.running);
-  const profile = useAgentRunStore((s) => s.profile);
-  const setProfile = useAgentRunStore((s) => s.setProfile);
   const report = useAgentRunStore((s) => s.report);
-  const findings = useAgentRunStore((s) => s.findings);
+  const results = useAgentRunStore((s) => s.results);
+  const coManaged = useAgentRunStore((s) => s.coManaged);
+  const breakGlassCount = useBenchmarkPrefs((s) => s.breakGlass.length);
   const advice = useAgentRunStore((s) => s.advice);
   const error = useAgentRunStore((s) => s.error);
   // Subscribe so badges re-render when the model or key changes.
   useAgentModelStore((s) => s.engine);
   useApiKeyStore((s) => s.apiKey);
   const model = currentModel();
-  const count = controlsForProfile(profile).length;
   const [view, setView] = useState<"office" | "cards">(() => {
     try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "office"; } catch { return "office"; }
   });
@@ -312,19 +313,22 @@ export default function AgentPlacePage() {
   return (
     <div className={styles.root}>
       <PageHeader
-        eyebrow="IntuneShade Baseline"
+        eyebrow="IntuneShade baseline"
         title="Place for your agents"
-        subtitle="Four agents benchmark your tenant against the IntuneShade Baseline, with CIS references and a NIS2 view. Collection and scoring are read-only and deterministic; AI only explains and summarises."
+        subtitle="Four agents benchmark your tenant against the CIS Microsoft 365 L1 tenant checks, with a NIS2 view. Collection and scoring are read-only and deterministic; AI only explains and summarises."
         icon={<Bot24Regular />}
       />
       <div className={styles.scroll}>
         <div className={styles.controls}>
-          <TabList selectedValue={profile} onTabSelect={(_, d) => setProfile(d.value as Profile)} disabled={running} size="small">
-            <Tab value="L1">Level 1</Tab>
-            <Tab value="L2">Level 2</Tab>
-            <Tab value="Extended">Extended</Tab>
-          </TabList>
-          <Text className={styles.role}>{count} controls</Text>
+          <Badge appearance="tint" color="brand">CIS L1 · {CHECKS.length} tenant checks</Badge>
+          <Popover positioning="below-start" withArrow>
+            <PopoverTrigger disableButtonEnhancement>
+              <Button icon={<OptionsRegular />} disabled={running}>
+                Run options{breakGlassCount ? ` · ${breakGlassCount} break-glass` : ""}
+              </Button>
+            </PopoverTrigger>
+            <PopoverSurface><RunOptionsPanel /></PopoverSurface>
+          </Popover>
           <div style={{ flex: 1 }} />
           <TabList selectedValue={view} onTabSelect={(_, d) => changeView(d.value as "office" | "cards")} size="small" appearance="subtle">
             <Tab value="office">Office</Tab>
@@ -341,7 +345,7 @@ export default function AgentPlacePage() {
           {running ? (
             <Button icon={<StopRegular />} onClick={cancelBenchmark}>Cancel</Button>
           ) : (
-            <Button appearance="primary" icon={<PlayRegular />} onClick={() => void runBenchmark(profile)}>
+            <Button appearance="primary" icon={<PlayRegular />} onClick={() => void runBenchmark()}>
               {report ? "Run again" : "Start benchmark"}
             </Button>
           )}
@@ -365,10 +369,14 @@ export default function AgentPlacePage() {
         <div className={styles.bottom}>
           <ActivityFeed />
           {report ? (
-            <BenchmarkResults report={report} findings={findings} advice={advice} />
+            <BenchmarkResults report={report} results={results} advice={advice} coManaged={coManaged} />
           ) : (
             <Text className={styles.empty}>
-              Results appear here when the Reporter is done. The first run asks you to consent to two extra read-only permissions (Policy.Read.All, RoleManagement.Read.Directory).
+              Results appear here when the Reporter is done. The first run asks you to consent to extra read-only
+              permissions (policies, roles, PIM settings, sign-in registration, access reviews). Because IntuneShade is a
+              multi-tenant app, some of these need a Global Administrator or Privileged Role Administrator to grant admin
+              consent once for your organisation. Tag your break-glass accounts under Run options first, so their
+              Conditional Access exclusions are recognised.
             </Text>
           )}
         </div>

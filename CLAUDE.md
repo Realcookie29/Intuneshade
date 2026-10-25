@@ -23,7 +23,7 @@ cd api && npm run build # Bundle claude.ts → dist/functions/claude.js via esbu
 1. Copy `api/local.settings.json.example` → `api/local.settings.json` (no keys needed; the AI key is provided per-request from the UI).
 2. Run frontend and API in two separate terminals.
 
-Tests: `npm test` (Vitest) — currently covers the IntuneShade Baseline evaluators and engine (`src/baseline/baseline.test.ts`). Everything else is verified with `npm run build` / `npm run dev`.
+Tests: `npm test` (Vitest) — currently covers the CIS L1 evaluators, CA engine and scoring (`src/baseline/baseline.test.ts`). Everything else is verified with `npm run build` / `npm run dev`.
 
 ## Architecture
 
@@ -39,11 +39,14 @@ This is a **multi-tenant SPA** (no per-user server infrastructure) with a thin A
   - `conflictStore` — manages conflict scan results
 - **memberOf migration (temporary)**: `src/utils/memberOfRule.ts` (pure rule parser, no Graph imports), `src/services/memberOfScanService.ts` (scan + remediation suggestions) and `src/components/governance/MemberOfMigrationPage.tsx`. This is a time-boxed migration aid for the Entra ID `memberOf` retirement — delete all three files, the `memberOfMigration` entry in `ToolView`/`NavSidebar`/`AppShell`, and the Dashboard quick action once the deadline in `MEMBEROF_RETIREMENT_DATE` has passed.
 - **Required Apps report**: `src/services/requiredAppsReportService.ts` (pure — turns `PolicyRow[]` into a self-contained HTML document) and `src/services/deploymentProfileService.ts` (Graph: a deployment profile's devices + their transitive Entra groups, cached per profile since it costs two calls per device). The page is `src/components/report/RequiredAppsReportPage.tsx`, reachable from the sidebar and from the Applications toolbar. Note: interactive report previews must live on a **page**, not inside a Fluent `Dialog` — the dialog's focus trap swallows keystrokes aimed at the iframe, which breaks the in-report search box.
-- **IntuneShade Baseline + agents** ("Place for your agents", ToolView `agents`):
-  - `src/baseline/` — our own control set (`controls.json`), pure `evaluators.ts`, `index.ts` (assess, score, NIS2 labels + manual checklist). Controls *reference* CIS IDs (indicative) and NIS2 art. 21(2) measures; never copy CIS benchmark text (licensing). Never claim "NIS2/CIS compliant" anywhere — it's a technical readiness check.
-  - `src/services/agents/` — `collector` (Graph, read-only, per-source error isolation → controls become `error`, never false `fail`), `advisor` + `reporter` (AI optional, static fallback, output validated, scripts display-only), `orchestrator` (pipeline + events into `agentRunStore`).
-  - `src/services/ai/provider.ts` — `byok` (via `/api/claude` modes `advise`/`report`) or `ollama` (browser → `http://localhost:11434`, allowed in the CSP; user sets `OLLAMA_ORIGINS`). Prompts live in `src/services/ai/prompts.ts` **and** in `api/src/functions/claude.ts` — keep both in sync. The AI only ever receives findings, never the raw snapshot; names can be masked (`ai/mask.ts`).
-  - Extra read scopes (`BASELINE_SCOPES` in `msalConfig.ts`) are requested incrementally at the first benchmark via the optional `scopes` argument of `graphGet`/`graphGetAll` — not at sign-in.
+- **IntuneShade baseline (CIS L1) + agents** ("Place for your agents", ToolView `agents`):
+  - `src/baseline/cis-l1-tenant.json` — the 52 CIS M365 L1 tenant checks (CIS ID, area, Graph paths, rule, expected, severity). Titles/rules are **our own wording**; never copy CIS benchmark text (licensing). Never claim "NIS2/CIS compliant" anywhere — it's a technical readiness check.
+  - `src/baseline/context.ts` — the only way evaluators read Graph: per-run GET cache, failures as typed `Fetched` (403 = missing permission/licence), helpers (`result`, `fetchFailure` — beta 400/404 → Manual, else Error).
+  - `src/baseline/checks/*.ts` — evaluators keyed on check id (`ca.ts` holds the CA engine: Pass / Partial for report-only, scoping, exclusions beyond break-glass, carve-outs). `index.ts` registers them (`EVALUATORS`), runs checks (`runCheck`: no evaluator → Manual, throw → Error) and scores (`countStates`: Pass / (Pass+Partial+Fail)). Adding a check = JSON entry + evaluator.
+  - Read-only by design: only GETs, delegated scopes (`BASELINE_SCOPES`) requested incrementally via `ensureScopes` (redirect, resumes on the agents page). User input (break-glass accounts, manual answers, full MFA scan) lives in `benchmarkPrefsStore` (localStorage only).
+  - `src/services/agents/` — `collector` (context over `graphGet`/`graphGetAll` + prefetch of `SHARED_SOURCES`), `advisor` + `reporter` (AI optional, static fallback, output validated, scripts display-only; reporter also owns scoring by area/NIS2 and the HTML/CSV/JSON exports), `orchestrator` (pipeline + events into `agentRunStore`).
+  - `src/services/ai/provider.ts` — `byok` (via `/api/claude` modes `advise`/`report`) or `ollama` (browser → `http://localhost:11434`, allowed in the CSP; user sets `OLLAMA_ORIGINS`). Prompts live in `src/services/ai/prompts.ts` **and** in `api/src/functions/claude.ts` — keep both in sync. The AI only ever receives results, never raw Graph responses; names can be masked (`ai/mask.ts`).
+  - Tests: `src/baseline/baseline.test.ts` runs evaluators against a fixture Graph reader.
 - **Main orchestrator** (`src/components/layout/AppShell.tsx`): Holds page-level routing state (which "mode" is active: policy type view, bulk assign, conflict, map, report). All dialogs are rendered here.
 - **UI**: Fluent UI v9 (`@fluentui/react-components`). Use `makeStyles` for all component styling.
 

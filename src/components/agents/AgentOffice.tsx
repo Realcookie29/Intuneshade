@@ -406,7 +406,6 @@ export default function AgentOffice() {
   const handoff = useAgentRunStore((st) => st.handoff);
   const running = useAgentRunStore((st) => st.running);
   const report = useAgentRunStore((st) => st.report);
-  const profile = useAgentRunStore((st) => st.profile);
   // The courier walk lasts until its timer marks this hand-off as delivered.
   const [deliveredSeq, setDeliveredSeq] = useState(0);
   const courier: Courier | null = handoff && handoff.seq !== deliveredSeq ? handoff : null;
@@ -440,10 +439,10 @@ export default function AgentOffice() {
 
   const collectorBusy = agents.collector.status === "working";
   const printing = agents.reporter.status === "working" && agents.reporter.progress >= 0.5;
-  const boardTitle = running ? "BENCHMARK RUNNING" : report ? `BASELINE ${report.profile}` : "INTUNESHADE BASELINE";
-  const boardMain = report && !running ? `${report.overall.score}%` : running ? "…" : profile;
+  const boardTitle = running ? "BENCHMARK RUNNING" : report ? "CIS L1 SCORE" : "INTUNESHADE BASELINE";
+  const boardMain = report && !running ? `${report.overall.score}%` : running ? "…" : "CIS L1";
   const boardSub = report && !running
-    ? `${report.overall.passed} passed · ${report.overall.failed} failed`
+    ? `${report.overall.Pass} pass · ${report.overall.Partial} partial · ${report.overall.Fail} fail`
     : running
       ? (ORDER.find((a) => agents[a].status === "working") ?? "starting") + " at work"
       : "Press Start benchmark";

@@ -2,38 +2,52 @@
 // Scores are computed here, deterministically. The AI (when configured) only
 // writes the executive summary and key risks. Also renders the HTML export.
 
-import { BASELINE_VERSION, NIS2_MANUAL_CHECKS, NIS2_MEASURES, controlById, controlsForProfile, score } from "../../baseline";
-import type { Advice, BenchmarkReport, Control, Finding, Nis2Measure, Profile } from "../../baseline/types";
+import {
+  BASELINE_NAME, BASELINE_SOURCE, CHECKS, NIS2_MANUAL_CHECKS, NIS2_MEASURES,
+  checkById, countStates, effectiveState, nis2For,
+} from "../../baseline";
+import type { Advice, BenchmarkReport, CheckResult, CheckState, ManualAnswer, Nis2Measure, StateCounts } from "../../baseline/types";
 import { runAgentPrompt } from "../ai/provider";
 import { maskFacts } from "../ai/mask";
 
-const CATEGORIES: Control["category"][] = ["identity", "access", "endpoint", "compliance"];
+/** Areas in the order they appear in the baseline. */
+export const AREAS: string[] = [...new Set(CHECKS.map((c) => c.area))];
 
-function byFilter(findings: Finding[], keep: (c: Control) => boolean): Finding[] {
-  return findings.filter((f) => {
-    const c = controlById(f.controlId);
-    return c ? keep(c) : false;
-  });
+type Scores = Pick<BenchmarkReport, "overall" | "byArea" | "byNis2">;
+
+/** Scores over effective states (manual answers included). Pure — the UI recomputes it live. */
+export function scoreResults(results: CheckResult[], answers: Record<string, ManualAnswer>): Scores {
+  const states = results.map((r) => ({ r, s: effectiveState(r, answers), c: checkById(r.id) }));
+  const pick = (keep: (x: (typeof states)[number]) => boolean): StateCounts => countStates(states.filter(keep).map((x) => x.s));
+  return {
+    overall: pick(() => true),
+    byArea: Object.fromEntries(AREAS.map((a) => [a, pick((x) => x.c?.area === a)])),
+    byNis2: Object.fromEntries(
+      (Object.keys(NIS2_MEASURES) as Nis2Measure[]).map((m) => [m, pick((x) => !!x.c && nis2For(x.c).includes(m))]),
+    ) as Record<Nis2Measure, StateCounts>,
+  };
 }
 
-function staticSummary(r: Omit<BenchmarkReport, "executiveSummary" | "keyRisks" | "summarySource">, findings: Finding[]) {
-  const critical = byFilter(findings, (c) => c.severity === "critical").filter((f) => f.status === "fail");
-  const weakest = CATEGORIES
-    .filter((k) => r.byCategory[k].passed + r.byCategory[k].failed > 0)
-    .sort((a, b) => r.byCategory[a].score - r.byCategory[b].score)[0];
+function staticSummary(s: Scores, results: CheckResult[], answers: Record<string, ManualAnswer>) {
+  const failing = results.filter((r) => effectiveState(r, answers) === "Fail");
+  const highFail = failing.filter((r) => checkById(r.id)?.severity === "High");
+  const weakest = AREAS
+    .filter((a) => s.byArea[a].Pass + s.byArea[a].Fail + s.byArea[a].Partial > 0)
+    .sort((a, b) => s.byArea[a].score - s.byArea[b].score)[0];
+  const o = s.overall;
   const parts = [
-    `The tenant scores ${r.overall.score}% on IntuneShade Baseline ${r.profile}: ${r.overall.passed} controls pass and ${r.overall.failed} fail.`,
-    critical.length
-      ? `${critical.length} critical control${critical.length === 1 ? "" : "s"} fail and should be fixed first.`
-      : "No critical controls fail.",
-    weakest ? `The weakest area is ${weakest} (${r.byCategory[weakest].score}%).` : "",
-    r.overall.manual + r.overall.errors
-      ? `${r.overall.manual + r.overall.errors} control(s) need manual verification or could not be read.`
+    `The tenant scores ${o.score}% on the CIS L1 tenant checks: ${o.Pass} pass, ${o.Partial} partially pass and ${o.Fail} fail.`,
+    highFail.length
+      ? `${highFail.length} high-severity check${highFail.length === 1 ? "" : "s"} fail and should be fixed first.`
+      : "No high-severity checks fail.",
+    weakest ? `The weakest area is ${weakest} (${s.byArea[weakest].score}%).` : "",
+    o.Manual + o.Error
+      ? `${o.Manual + o.Error} check(s) need manual verification or could not be read.`
       : "",
   ];
   return {
     executiveSummary: parts.filter(Boolean).join(" "),
-    keyRisks: critical.map((f) => controlById(f.controlId)?.title ?? f.controlId).slice(0, 5),
+    keyRisks: highFail.map((r) => `${r.id} ${checkById(r.id)?.title ?? ""}`.trim()).slice(0, 5),
   };
 }
 
@@ -45,45 +59,34 @@ export interface ReporterHooks {
 }
 
 export async function buildReport(
-  findings: Finding[],
+  results: CheckResult[],
   advice: Advice[],
-  profile: Profile,
+  answers: Record<string, ManualAnswer>,
   tenantName: string,
   hooks: ReporterHooks,
 ): Promise<BenchmarkReport> {
-  const byCategory = Object.fromEntries(
-    CATEGORIES.map((k) => [k, score(byFilter(findings, (c) => c.category === k))]),
-  ) as BenchmarkReport["byCategory"];
-  const byNis2 = Object.fromEntries(
-    (Object.keys(NIS2_MEASURES) as Nis2Measure[]).map((m) => [m, score(byFilter(findings, (c) => c.refs.nis2.includes(m)))]),
-  ) as BenchmarkReport["byNis2"];
-
-  const base = {
-    generatedAt: new Date().toISOString(),
-    tenantName,
-    profile,
-    overall: score(findings),
-    byCategory,
-    byNis2,
-  };
-  const fallback = staticSummary(base, findings);
+  const scores = scoreResults(results, answers);
+  const base = { generatedAt: new Date().toISOString(), tenantName, ...scores };
+  const fallback = staticSummary(scores, results, answers);
 
   if (hooks.useAi) {
     try {
-      const failed = findings.filter((f) => f.status === "fail").map((f) => ({
-        controlId: f.controlId,
-        title: controlById(f.controlId)?.title,
-        severity: controlById(f.controlId)?.severity,
-        summary: f.summary,
-        facts: hooks.mask ? maskFacts(f.evidence.facts) : f.evidence.facts,
-      }));
+      const failed = results
+        .filter((r) => { const s = effectiveState(r, answers); return s === "Fail" || s === "Partial"; })
+        .map((r) => ({
+          controlId: r.id,
+          title: checkById(r.id)?.title,
+          severity: checkById(r.id)?.severity,
+          status: r.state,
+          summary: hooks.mask ? maskFacts([r.message])[0] : r.message,
+        }));
       const res = (await runAgentPrompt("report", {
-        profile,
-        overall: base.overall,
-        byCategory,
-        nis2: Object.fromEntries(Object.entries(byNis2).map(([m, s]) => [`${m}: ${NIS2_MEASURES[m as Nis2Measure]}`, s.score])),
+        benchmark: "CIS Microsoft 365 L1 — tenant checks",
+        overall: scores.overall,
+        byArea: Object.fromEntries(Object.entries(scores.byArea).map(([a, s]) => [a, s.score])),
+        nis2: Object.fromEntries(Object.entries(scores.byNis2).map(([m, s]) => [`${m}: ${NIS2_MEASURES[m as Nis2Measure]}`, s.score])),
         failed,
-        topAdvice: advice.slice(0, 5).map((a) => ({ controlId: a.controlId, priority: a.priority })),
+        topAdvice: advice.slice(0, 5).map((a) => ({ controlId: a.id, priority: a.priority })),
       }, hooks.signal)) as { executiveSummary?: unknown; keyRisks?: unknown };
       const summary = typeof res.executiveSummary === "string" ? res.executiveSummary.slice(0, 2000) : "";
       if (summary) {
@@ -101,75 +104,123 @@ export async function buildReport(
   return { ...base, ...fallback, summarySource: "static" };
 }
 
-// ─── HTML export ──────────────────────────────────────────────────────────────
-// Self-contained, script-free document (the production CSP would block inline
-// scripts anyway). Every dynamic string is escaped — finding text and AI output
-// are untrusted.
+// ─── Exports ──────────────────────────────────────────────────────────────────
 
 function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, (ch) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
 
-const STATUS_COLOR: Record<Finding["status"], string> = {
-  pass: "#1f9d55", fail: "#d64545", manual: "#c98a00", not_applicable: "#888", error: "#888",
+export const STATE_COLOR: Record<CheckState, string> = {
+  Pass: "#1f9d55", Fail: "#d64545", Partial: "#e07b00", Manual: "#c98a00", NotApplicable: "#888", Error: "#7a5af8",
 };
 
-export function renderReportHtml(report: BenchmarkReport, findings: Finding[], advice: Advice[]): string {
-  const adviceById = new Map(advice.map((a) => [a.controlId, a]));
-  const inScope = new Set(controlsForProfile(report.profile).map((c) => c.id));
-  const rows = findings.filter((f) => inScope.has(f.controlId)).map((f) => {
-    const c = controlById(f.controlId)!;
-    const a = adviceById.get(f.controlId);
+export const STATE_LABEL: Record<CheckState, string> = {
+  Pass: "Pass", Fail: "Fail", Partial: "Partial", Manual: "Manual", NotApplicable: "N/A", Error: "Error",
+};
+
+function csvCell(v: unknown): string {
+  let s = String(v ?? "");
+  // Neutralise spreadsheet formulas — tenant strings are untrusted.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+export function toCsv(columns: string[], rows: unknown[][]): string {
+  return [columns, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
+export function resultsCsv(results: CheckResult[], answers: Record<string, ManualAnswer>): string {
+  return toCsv(
+    ["CIS ID", "Title", "Area", "Severity", "State", "Answered manually", "Expected", "Actual", "Message", "Notes"],
+    results.map((r) => {
+      const c = checkById(r.id);
+      const a = answers[r.id];
+      return [r.id, c?.title, c?.area, c?.severity, effectiveState(r, answers), r.state === "Manual" && a ? "yes" : "",
+        r.expected, r.actual, r.message, a?.notes ?? ""];
+    }),
+  );
+}
+
+export function resultsJson(report: BenchmarkReport | null, results: CheckResult[], advice: Advice[], answers: Record<string, ManualAnswer>): string {
+  return JSON.stringify({ baseline: BASELINE_NAME, source: BASELINE_SOURCE, report, results, advice, manualAnswers: answers }, null, 2);
+}
+
+/**
+ * Self-contained, script-free HTML document (the production CSP would block
+ * inline scripts anyway). Every dynamic string is escaped — tenant data and AI
+ * output are untrusted.
+ */
+export function renderReportHtml(report: BenchmarkReport, results: CheckResult[], advice: Advice[], answers: Record<string, ManualAnswer>): string {
+  const adviceById = new Map(advice.map((a) => [a.id, a]));
+  const rows = results.map((r) => {
+    const c = checkById(r.id);
+    const a = adviceById.get(r.id);
+    const s = effectiveState(r, answers);
+    const ans = r.state === "Manual" ? answers[r.id] : undefined;
     return `<tr>
-      <td class="mono">${esc(c.id)}</td>
-      <td><strong>${esc(c.title)}</strong><div class="muted">${esc(f.summary)}</div>
-        ${a ? `<details><summary>Advice (priority ${a.priority}, effort ${esc(a.effort)})</summary><p>${esc(a.explanation)}</p><ol>${a.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>${a.script ? `<pre>${esc(a.script)}</pre>` : ""}</details>` : ""}
+      <td class="mono">${esc(r.id)}</td>
+      <td><strong>${esc(c?.title ?? r.id)}</strong><div class="muted">${esc(r.message)}</div>
+        <div class="small">Expected: ${esc(r.expected)} · Actual: ${esc(r.actual)}</div>
+        ${ans ? `<div class="small">Answered manually${ans.notes ? `: ${esc(ans.notes)}` : ""}</div>` : ""}
+        ${a ? `<details><summary>Advice (priority ${a.priority}, effort ${esc(a.effort)})</summary><p>${esc(a.explanation)}</p><ol>${a.steps.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>${a.script ? `<pre>${esc(a.script)}</pre>` : ""}</details>` : ""}
       </td>
-      <td>${esc(c.profile)}</td>
-      <td>${esc(c.severity)}</td>
-      <td class="mono small">${esc(c.refs.cis.join(", ") || "—")}<br>${esc(c.refs.nis2.map((m) => `NIS2 21(2)(${m})`).join(", "))}</td>
-      <td><span class="pill" style="background:${STATUS_COLOR[f.status]}">${esc(f.status.replace("_", " "))}</span></td>
+      <td>${esc(c?.area)}</td>
+      <td>${esc(c?.severity)}</td>
+      <td><span class="pill" style="background:${STATE_COLOR[s]}">${esc(STATE_LABEL[s])}</span></td>
     </tr>`;
+  }).join("");
+
+  const areaRows = AREAS.map((a) => {
+    const s = report.byArea[a];
+    return `<tr><td>${esc(a)}</td><td>${s.Pass + s.Fail + s.Partial ? `${s.score}%` : "—"}</td><td>${s.Pass}</td><td>${s.Partial}</td><td>${s.Fail}</td><td>${s.Manual + s.Error}</td></tr>`;
   }).join("");
 
   const nis2Rows = (Object.keys(NIS2_MEASURES) as Nis2Measure[]).map((m) => {
     const s = report.byNis2[m];
-    const tech = s.passed + s.failed ? `${s.score}% (${s.passed}/${s.passed + s.failed})` : "no technical controls";
+    const scored = s.Pass + s.Fail + s.Partial;
+    const tech = scored ? `${s.score}% (${s.Pass}/${scored})` : "no technical checks";
     const manual = NIS2_MANUAL_CHECKS.filter((x) => x.measure === m).map((x) => `<li>☐ ${esc(x.text)}</li>`).join("");
     return `<tr><td class="mono">(${m})</td><td>${esc(NIS2_MEASURES[m])}${manual ? `<ul class="check">${manual}</ul>` : ""}</td><td>${esc(tech)}</td></tr>`;
   }).join("");
 
+  const o = report.overall;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IntuneShade Baseline report — ${esc(report.tenantName || "tenant")}</title>
+<title>IntuneShade baseline report — ${esc(report.tenantName || "tenant")}</title>
 <style>
 body{font-family:Segoe UI,system-ui,sans-serif;color:#1b1d24;max-width:1100px;margin:32px auto;padding:0 20px;line-height:1.45}
 h1{margin:0 0 4px}h2{margin-top:36px;border-bottom:2px solid #FFB020;padding-bottom:4px}
-.muted{color:#666;font-size:13px}.mono{font-family:Consolas,monospace}.small{font-size:12px}
-.kpis{display:flex;gap:16px;flex-wrap:wrap;margin:20px 0}.kpi{border:1px solid #ddd;border-radius:8px;padding:12px 16px;min-width:130px}
+.muted{color:#666;font-size:13px}.mono{font-family:Consolas,monospace}.small{font-size:12px;color:#555}
+.kpis{display:flex;gap:16px;flex-wrap:wrap;margin:20px 0}.kpi{border:1px solid #ddd;border-radius:8px;padding:12px 16px;min-width:110px}
 .kpi b{display:block;font-size:28px}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid #eee;padding:8px;text-align:left;vertical-align:top}
 .pill{color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;white-space:nowrap}
-pre{background:#f5f5f7;padding:10px;overflow:auto;font-size:12px}ul.check{list-style:none;padding-left:0;font-size:13px;color:#444}
+pre{background:#f5f5f7;padding:10px;overflow:auto;font-size:12px;white-space:pre-wrap}ul.check{list-style:none;padding-left:0;font-size:13px;color:#444}
 .disclaimer{background:#fff8e6;border-left:3px solid #FFB020;padding:10px 14px;font-size:13px}
 @media print{details{display:block}details>summary{display:none}}
 </style></head><body>
-<h1>IntuneShade Baseline ${esc(report.profile)} — ${esc(report.tenantName || "tenant")}</h1>
-<div class="muted">Generated ${esc(new Date(report.generatedAt).toLocaleString())} · baseline v${BASELINE_VERSION} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
+<h1>IntuneShade baseline — ${esc(report.tenantName || "tenant")}</h1>
+<div class="muted">CIS Microsoft 365 L1 tenant checks · generated ${esc(new Date(report.generatedAt).toLocaleString())} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
 <div class="kpis">
-<div class="kpi"><b>${report.overall.score}%</b>overall score</div>
-<div class="kpi"><b>${report.overall.passed}</b>passed</div>
-<div class="kpi"><b>${report.overall.failed}</b>failed</div>
-<div class="kpi"><b>${report.overall.manual + report.overall.errors}</b>manual / not readable</div>
+<div class="kpi"><b>${o.score}%</b>score</div>
+<div class="kpi"><b>${o.Pass}</b>pass</div>
+<div class="kpi"><b>${o.Partial}</b>partial</div>
+<div class="kpi"><b>${o.Fail}</b>fail</div>
+<div class="kpi"><b>${o.Manual}</b>manual</div>
+<div class="kpi"><b>${o.NotApplicable}</b>not applicable</div>
+<div class="kpi"><b>${o.Error}</b>not readable</div>
 </div>
+<p class="small">Score = Pass / (Pass + Partial + Fail). Manual, not applicable and unreadable checks are not scored.</p>
 <h2>Executive summary</h2><p>${esc(report.executiveSummary)}</p>
 ${report.keyRisks.length ? `<ul>${report.keyRisks.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-<h2>Controls</h2>
-<table><thead><tr><th>ID</th><th>Control</th><th>Profile</th><th>Severity</th><th>References</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+<h2>By area</h2>
+<table><thead><tr><th>Area</th><th>Score</th><th>Pass</th><th>Partial</th><th>Fail</th><th>Manual / error</th></tr></thead><tbody>${areaRows}</tbody></table>
+<h2>Checks</h2>
+<table><thead><tr><th>CIS ID</th><th>Check</th><th>Area</th><th>Severity</th><th>State</th></tr></thead><tbody>${rows}</tbody></table>
 <h2>NIS2 / Cyberbeveiligingswet — technical readiness per art. 21(2) measure</h2>
-<table><thead><tr><th></th><th>Measure</th><th>Technical controls</th></tr></thead><tbody>${nis2Rows}</tbody></table>
+<table><thead><tr><th></th><th>Measure</th><th>Technical checks</th></tr></thead><tbody>${nis2Rows}</tbody></table>
 <h2>About this report</h2>
-<p class="disclaimer">This is an automated technical readiness check of a Microsoft 365 tenant against the IntuneShade Baseline. It is not an audit and not a compliance statement. CIS references are indicative and point to the CIS Benchmarks® published by the Center for Internet Security; verify them against the benchmark version you are licensed for. NIS2 also requires organisational measures that a tenant scan cannot verify (see the checklist above).</p>
+<p class="disclaimer">This is an automated, read-only technical check of a Microsoft 365 tenant. It is not an audit and not a compliance statement. Check IDs refer to the CIS Microsoft 365 Foundations Benchmark® published by the Center for Internet Security (scope: ${esc(BASELINE_SOURCE)}); the descriptions are IntuneShade's own. Verify results against the benchmark version you are licensed for. NIS2 also requires organisational measures that a tenant scan cannot verify (see the checklist above).</p>
 </body></html>`;
 }

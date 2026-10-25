@@ -2,27 +2,26 @@
 // Runs the four agents as a pipeline — Collector → Assessor → Advisor → Reporter —
 // and narrates every step into agentRunStore for the "Place for your agents" page.
 
-import { assessControl, controlsForProfile, score } from "../../baseline";
-import type { Finding, Profile } from "../../baseline/types";
+import { CHECKS, countStates, runCheck } from "../../baseline";
+import type { CheckResult } from "../../baseline/types";
 import { useAgentRunStore, type AgentId } from "../../store/agentRunStore";
 import { useAgentModelStore } from "../../store/agentModelStore";
+import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
 import { ensureScopes, getTenantName } from "../graphClient";
 import { BASELINE_SCOPES } from "../../auth/msalConfig";
 import { currentModel } from "../ai/provider";
-import { collectSnapshot, sourceSize } from "./collector";
-import { advise } from "./advisor";
+import { isCoManaged } from "../../baseline/checks/intune";
+import { collectShared, createGraphContext } from "./collector";
+import { advise, NEEDS_ADVICE } from "./advisor";
 import { buildReport } from "./reporter";
 
 let controller: AbortController | null = null;
-
-/** Lets the UI breathe between fast, synchronous steps so progress is visible. */
-const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function cancelBenchmark() {
   controller?.abort();
 }
 
-export async function runBenchmark(profile: Profile): Promise<void> {
+export async function runBenchmark(): Promise<void> {
   const store = useAgentRunStore.getState();
   if (store.running) return;
   store.reset();
@@ -33,6 +32,7 @@ export async function runBenchmark(profile: Profile): Promise<void> {
   const { updateAgent, addLog, handOff, setResults } = useAgentRunStore.getState();
   const model = currentModel();
   const { maskNames } = useAgentModelStore.getState();
+  const { breakGlass, fullPerUserMfaScan, manualAnswers } = useBenchmarkPrefs.getState();
   const useAi = model.engine !== "static";
   const mask = model.leavesDevice && maskNames;
   let current: AgentId = "collector";
@@ -46,55 +46,42 @@ export async function runBenchmark(profile: Profile): Promise<void> {
       useAgentRunStore.getState().finish();
       return;
     }
-    addLog("collector", "info", "Starting read-only collection. No changes are made to the tenant.");
-    const snapshot = await collectSnapshot({
+    addLog("collector", "info", "Starting read-only collection. Only GET requests — no changes are made to the tenant.");
+    const ctx = createGraphContext({ breakGlass, fullPerUserMfaScan }, (path) => addLog(current, "graph", `GET ${path}`));
+    const okCount = await collectShared(ctx, {
       signal,
-      onSource: (i, total, label, endpoint) => {
-        updateAgent("collector", { task: `Reading ${label}`, progress: i / total });
-        addLog("collector", "graph", `GET ${endpoint}`);
-      },
-      onSourceDone: (label, result) => {
-        if (result.ok) {
-          const n = sourceSize(result);
-          addLog("collector", "info", `${label}: ${n === null ? "read" : `${n} item${n === 1 ? "" : "s"}`}`);
-        } else {
-          addLog("collector", "warn", `${label}: ${result.error}`);
-        }
-      },
+      onRequest: () => {},
+      onSource: (i, total, label) => updateAgent("collector", { task: `Reading ${label}`, progress: i / total }),
+      onSourceDone: (label, ok, detail) => addLog("collector", ok ? "info" : "warn", `${label}: ${detail}`),
     });
-    const okCount = Object.values(snapshot).filter((v) => typeof v === "object" && v.ok).length;
-    setResults({ snapshot });
-    updateAgent("collector", { status: "done", task: "Snapshot complete", progress: 1, output: `${okCount} sources read` });
+    updateAgent("collector", { status: "done", task: "Shared data read", progress: 1, output: `${okCount} sources read` });
     handOff("collector", "assessor", `${okCount} sources`);
 
     // ── Assessor ───────────────────────────────────────────────────────────────
     current = "assessor";
-    const controls = controlsForProfile(profile);
-    updateAgent("assessor", { status: "working", task: "Loading IntuneShade Baseline", progress: 0 });
-    addLog("assessor", "info", `Checking ${controls.length} controls (profile ${profile}) — deterministic rules, no AI.`);
-    const findings: Finding[] = [];
-    for (const [i, control] of controls.entries()) {
+    updateAgent("assessor", { status: "working", task: "Loading CIS L1 checks", progress: 0 });
+    addLog("assessor", "info", `Evaluating ${CHECKS.length} CIS L1 tenant checks — deterministic rules, no AI.`);
+    if (!breakGlass.length) addLog("assessor", "warn", "No break-glass accounts set — CA exclusions cannot be told apart from emergency access (see Run options).");
+    const results: CheckResult[] = [];
+    for (const [i, check] of CHECKS.entries()) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      updateAgent("assessor", { task: `${control.id} · ${control.title}`, progress: i / controls.length });
-      const f = assessControl(control, snapshot);
-      findings.push(f);
-      addLog("assessor", f.status === "fail" ? "warn" : f.status === "error" ? "error" : "info",
-        `${control.id} ${f.status.toUpperCase()} — ${f.summary}`);
-      await tick(60);
+      updateAgent("assessor", { task: `${check.id} · ${check.title}`, progress: i / CHECKS.length });
+      const r = await runCheck(check, ctx);
+      results.push(r);
+      addLog("assessor", r.state === "Fail" ? "warn" : r.state === "Error" ? "error" : "info", `${check.id} ${r.state.toUpperCase()} — ${r.message}`);
     }
-    const s = score(findings);
-    setResults({ findings });
-    updateAgent("assessor", { status: "done", task: "Assessment complete", progress: 1, output: `${s.score}% · ${s.failed} failed` });
-    const toAdvise = findings.filter((f) => f.status === "fail" || f.status === "manual").length;
-    handOff("assessor", "advisor", `${toAdvise} findings`);
+    const counts = countStates(results.map((r) => r.state));
+    setResults({ results, coManaged: await isCoManaged(ctx) });
+    updateAgent("assessor", { status: "done", task: "Assessment complete", progress: 1, output: `${counts.score}% · ${counts.Fail} failed` });
+    handOff("assessor", "advisor", `${results.filter((r) => NEEDS_ADVICE.has(r.state)).length} findings`);
 
     // ── Advisor ────────────────────────────────────────────────────────────────
     current = "advisor";
     updateAgent("advisor", { status: "working", task: useAi ? `Asking ${model.label}` : "Using built-in advice", progress: 0 });
     addLog("advisor", "ai", useAi
-      ? `Model: ${model.label}${model.leavesDevice ? ` — findings are sent to ${model.recipient}${mask ? " (names masked)" : ""}` : " — runs locally, nothing leaves this device"}`
-      : "No AI model configured — using the baseline's built-in remediation.");
-    const advice = await advise(findings, {
+      ? `Model: ${model.label}${model.leavesDevice ? ` — results are sent to ${model.recipient}${mask ? " (names masked)" : ""}` : " — runs locally, nothing leaves this device"}`
+      : "No AI model configured — using the checks' built-in guidance.");
+    const advice = await advise(results, {
       useAi,
       mask,
       batchSize: model.engine === "ollama" ? 4 : 25,
@@ -109,11 +96,11 @@ export async function runBenchmark(profile: Profile): Promise<void> {
 
     // ── Reporter ───────────────────────────────────────────────────────────────
     current = "reporter";
-    updateAgent("reporter", { status: "working", task: "Scoring frameworks", progress: 0.2 });
-    addLog("reporter", "info", "Scoring CIS profile, categories and NIS2 art. 21 measures.");
+    updateAgent("reporter", { status: "working", task: "Scoring areas", progress: 0.2 });
+    addLog("reporter", "info", "Scoring CIS areas and NIS2 art. 21 measures.");
     const tenantName = await getTenantName().catch(() => "");
     updateAgent("reporter", { task: useAi ? "Writing executive summary" : "Composing summary", progress: 0.5 });
-    const report = await buildReport(findings, advice, profile, tenantName, {
+    const report = await buildReport(results, advice, manualAnswers, tenantName, {
       useAi,
       mask,
       signal,

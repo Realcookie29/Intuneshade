@@ -1,0 +1,674 @@
+{
+  "schemaVersion": "1.0",
+  "name": "IntuneShade CIS L1 baseline",
+  "source": "CIS Microsoft 365 Foundations Benchmark v7.0.0 - Level 1 controls in scope for Entra ID and Intune (sections 1.1, 2.2.1, 4, 5)",
+  "tenantChecks": [
+    {
+      "id": "1.1.1",
+      "title": "Privileged accounts are cloud-only",
+      "area": "Admin accounts",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/roleManagement/directory/roleAssignments?$expand=principal",
+        "GET /v1.0/roleManagement/directory/roleEligibilitySchedules?$expand=principal",
+        "GET /v1.0/roleManagement/directory/roleDefinitions?$filter=isPrivileged eq true"
+      ],
+      "rule": "Collect all principals with an active or eligible assignment to a privileged role (roleDefinition.isPrivileged = true). For each user, read onPremisesSyncEnabled.",
+      "expected": "No privileged user has onPremisesSyncEnabled = true",
+      "severity": "High",
+      "notes": "Groups assigned to roles: expand transitive members (GET /v1.0/groups/{id}/transitiveMembers)."
+    },
+    {
+      "id": "1.1.2",
+      "title": "Two or more break-glass accounts are set up correctly",
+      "area": "Admin accounts",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "Let the admin tag 2+ break-glass accounts in the UI (persist locally). Then auto-verify per tagged account: cloud-only, permanent active Global Administrator, excluded from every enabled CA policy except the one dedicated to them.",
+      "expected": ">= 2 tagged accounts and all sub-checks pass",
+      "severity": "High",
+      "notes": "Break-glass list is also input for all CA checks (allowed exclusions)."
+    },
+    {
+      "id": "1.1.3",
+      "title": "Between two and four Global Administrators",
+      "area": "Admin accounts",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/roleManagement/directory/roleAssignments?$filter=roleDefinitionId eq '62e90394-69f5-4237-9190-012177145e10'&$expand=principal",
+        "GET /v1.0/roleManagement/directory/roleEligibilitySchedules?$filter=roleDefinitionId eq '62e90394-69f5-4237-9190-012177145e10'&$expand=principal"
+      ],
+      "rule": "Count distinct users holding Global Administrator (active + eligible, groups expanded).",
+      "expected": "2 <= count <= 4",
+      "severity": "High",
+      "notes": "Show active vs eligible separately; permanent active GA outside break-glass is a finding of its own."
+    },
+    {
+      "id": "1.1.4",
+      "title": "Admin accounts have no productivity licences",
+      "area": "Admin accounts",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/users/{id}/licenseDetails (per privileged user)"
+      ],
+      "rule": "For each privileged user, inspect assigned servicePlans.",
+      "expected": "No privileged user has productivity workloads enabled (e.g. EXCHANGE_S_ENTERPRISE, SHAREPOINTENTERPRISE, TEAMS1); Entra ID P1/P2-only is fine",
+      "severity": "Medium",
+      "notes": "Unlicensed admin accounts = Pass."
+    },
+    {
+      "id": "2.2.1",
+      "title": "Break-glass sign-ins raise an alert",
+      "area": "Monitoring",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "Cannot be read via Graph delegated with confidence (alerting lives in Sentinel / Defender / Log Analytics). Show as manual with evidence upload/notes.",
+      "expected": "Alerting on break-glass sign-ins exists",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "4.1",
+      "title": "Devices without a compliance policy are non-compliant",
+      "area": "Intune",
+      "checkType": "auto",
+      "graph": [
+        "GET /beta/deviceManagement/settings"
+      ],
+      "rule": "Read secureByDefault.",
+      "expected": "secureByDefault = true (devices without compliance policy are Not compliant)",
+      "severity": "High",
+      "notes": "Co-managed tenants: compliance workload may sit with ConfigMgr; flag as info."
+    },
+    {
+      "id": "4.2",
+      "title": "Personal device enrollment is blocked",
+      "area": "Intune",
+      "checkType": "auto",
+      "graph": [
+        "GET /beta/deviceManagement/deviceEnrollmentConfigurations"
+      ],
+      "rule": "Find the default platform restriction (priority 0; @odata.type deviceEnrollmentPlatformRestrictionsConfiguration or the per-platform singlePlatformRestriction variants). For each platform check personalDeviceEnrollmentBlocked.",
+      "expected": "personalDeviceEnrollmentBlocked = true for every platform in the default restriction",
+      "severity": "Medium",
+      "notes": "Report custom (non-default) restrictions that re-allow personal devices as info."
+    },
+    {
+      "id": "5.1.2.1",
+      "title": "Per-user MFA is not used",
+      "area": "Entra users",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/users/{id}/authentication/requirements"
+      ],
+      "rule": "Read perUserMfaState for users (sample or full scan with paging; expensive on large tenants).",
+      "expected": "No user has perUserMfaState enabled/enforced",
+      "severity": "Medium",
+      "notes": "Offer \"quick scan\" (admins only) and \"full scan\"."
+    },
+    {
+      "id": "5.1.2.2",
+      "title": "Users cannot register applications",
+      "area": "Entra users",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authorizationPolicy"
+      ],
+      "rule": "defaultUserRolePermissions.allowedToCreateApps",
+      "expected": "false",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.2.3",
+      "title": "Users cannot create tenants",
+      "area": "Entra users",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authorizationPolicy"
+      ],
+      "rule": "defaultUserRolePermissions.allowedToCreateTenants",
+      "expected": "false",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.2.4",
+      "title": "Entra admin center is restricted to admins",
+      "area": "Entra users",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/admin/entra/uxSetting"
+      ],
+      "rule": "restrictNonAdminAccess",
+      "expected": "true",
+      "severity": "Low",
+      "notes": "Fallback to manual if endpoint returns 403/404."
+    },
+    {
+      "id": "5.1.3.1",
+      "title": "Users cannot create security groups",
+      "area": "Entra groups",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authorizationPolicy"
+      ],
+      "rule": "defaultUserRolePermissions.allowedToCreateSecurityGroups",
+      "expected": "false",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.1.3.3",
+      "title": "Owners cannot manage group membership requests",
+      "area": "Entra groups",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "No Graph property; portal Groups > General.",
+      "expected": "\"Owners can manage group membership requests in My Groups\" = No",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.1.4.2",
+      "title": "Device limit per user is 20 or less",
+      "area": "Entra devices",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/policies/deviceRegistrationPolicy"
+      ],
+      "rule": "userDeviceQuota",
+      "expected": "<= 20",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.1.4.3",
+      "title": "Global admins are not local admins on joined devices",
+      "area": "Entra devices",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/policies/deviceRegistrationPolicy"
+      ],
+      "rule": "azureADJoin.localAdmins.enableGlobalAdmins",
+      "expected": "false",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "5.1.4.4",
+      "title": "Registering users are not local admins",
+      "area": "Entra devices",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/policies/deviceRegistrationPolicy"
+      ],
+      "rule": "azureADJoin.localAdmins.registeringUsers @odata.type",
+      "expected": "#microsoft.graph.noDeviceRegistrationMembership (None) or a specific small group",
+      "severity": "Medium",
+      "notes": "\"All\" registering users as local admin = Fail."
+    },
+    {
+      "id": "5.1.4.5",
+      "title": "Entra LAPS is enabled",
+      "area": "Entra devices",
+      "checkType": "auto-beta",
+      "graph": [
+        "GET /beta/policies/deviceRegistrationPolicy"
+      ],
+      "rule": "localAdminPassword.isEnabled",
+      "expected": "true",
+      "severity": "High",
+      "notes": "Pair with the Intune LAPS policy check (endpoint security > account protection)."
+    },
+    {
+      "id": "5.1.5.2",
+      "title": "Admin consent workflow is enabled",
+      "area": "Enterprise apps",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/adminConsentRequestPolicy"
+      ],
+      "rule": "isEnabled (and reviewers non-empty)",
+      "expected": "isEnabled = true and >= 1 reviewer",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.5.4",
+      "title": "App password credentials expire within 180 days",
+      "area": "Enterprise apps",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/defaultAppManagementPolicy"
+      ],
+      "rule": "isEnabled and applicationRestrictions.passwordCredentials[restrictionType=passwordLifetime].maxLifetime",
+      "expected": "isEnabled = true and maxLifetime <= P180D",
+      "severity": "Medium",
+      "notes": "Also list apps with secrets older than 180 days as info (GET /v1.0/applications?$select=displayName,passwordCredentials)."
+    },
+    {
+      "id": "5.1.5.5",
+      "title": "Custom app passwords are blocked",
+      "area": "Enterprise apps",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/defaultAppManagementPolicy"
+      ],
+      "rule": "applicationRestrictions.passwordCredentials[restrictionType=customPasswordAddition]",
+      "expected": "present (custom passwords blocked)",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.5.6",
+      "title": "App certificates expire within 180 days",
+      "area": "Enterprise apps",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/defaultAppManagementPolicy"
+      ],
+      "rule": "applicationRestrictions.keyCredentials[restrictionType=asymmetricKeyLifetime].maxLifetime",
+      "expected": "<= P180D",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.6.2",
+      "title": "Guest directory access is restricted",
+      "area": "External identities",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authorizationPolicy"
+      ],
+      "rule": "guestUserRoleId",
+      "expected": "10dae51f-b6af-4016-8d66-8c2a99b929b3 (limited) or 2af84b1e-32c8-42b7-82bc-daa82404023b (most restrictive); a0b1b346-4d3e-4e8b-98f8-753987be4970 (same as members) = Fail",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.1.8.1",
+      "title": "Password hash sync is enabled (hybrid)",
+      "area": "Hybrid",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/organization?$select=onPremisesSyncEnabled",
+        "GET /v1.0/directory/onPremisesSynchronization"
+      ],
+      "rule": "If onPremisesSyncEnabled: features.passwordSyncEnabled",
+      "expected": "true (N/A for cloud-only tenants)",
+      "severity": "Medium",
+      "notes": "Federated tenants: still recommend PHS as backup; show domain authenticationType (GET /v1.0/domains)."
+    },
+    {
+      "id": "5.2.2.1",
+      "title": "MFA required for all privileged roles",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies",
+        "GET /v1.0/roleManagement/directory/roleDefinitions?$filter=isPrivileged eq true"
+      ],
+      "rule": "CA engine: enabled policy, includeRoles covers all privileged roles (or All users), all apps, grant mfa or authenticationStrength.",
+      "expected": "Every privileged role is covered",
+      "severity": "High",
+      "notes": "Group-scoped admin policies: verify every privileged user is member; list uncovered admins."
+    },
+    {
+      "id": "5.2.2.2",
+      "title": "MFA required for all users",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: enabled, includeUsers All, includeApplications All, grant mfa/authenticationStrength.",
+      "expected": ">= 1 matching policy; exclusions only break-glass / documented",
+      "severity": "High",
+      "notes": "Count and list excluded users/groups/roles; > break-glass = Partial."
+    },
+    {
+      "id": "5.2.2.3",
+      "title": "Legacy authentication is blocked",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: enabled, All users, All apps, clientAppTypes contains exchangeActiveSync and other, grant block.",
+      "expected": ">= 1 matching policy",
+      "severity": "High",
+      "notes": "Also query sign-in logs for legacy auth successes as evidence (AuditLog.Read.All)."
+    },
+    {
+      "id": "5.2.2.4",
+      "title": "Admin sessions: sign-in frequency and no persistent browser",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: admin-scoped policy with sessionControls.signInFrequency (isEnabled, value <= 4 hours) and persistentBrowser.mode = never.",
+      "expected": "Both session controls present for admins",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.2.6",
+      "title": "High user risk requires MFA and password change",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: userRiskLevels contains high, grant mfa + passwordChange (AND) or riskRemediation.",
+      "expected": ">= 1 matching policy (requires Entra ID P2)",
+      "severity": "High",
+      "notes": "No P2 = N/A with note."
+    },
+    {
+      "id": "5.2.2.7",
+      "title": "Risky sign-ins require MFA or are blocked",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: signInRiskLevels contains high (and medium), grant mfa or block.",
+      "expected": ">= 1 matching policy (requires P2)",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "5.2.2.9",
+      "title": "Managed device required for access",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: All users, All apps, grant compliantDevice and/or domainJoinedDevice.",
+      "expected": ">= 1 matching policy without platform/clientApp carve-outs",
+      "severity": "High",
+      "notes": "Policies limited to some platforms or client app types = Partial; list the gaps."
+    },
+    {
+      "id": "5.2.2.10",
+      "title": "Managed device required to register security info",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: includeUserActions contains urn:user:registersecurityinfo, grant compliantDevice/domainJoinedDevice.",
+      "expected": ">= 1 matching policy",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "5.2.2.11",
+      "title": "Intune enrollment requires sign-in every time",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: includeApplications contains d4ebce55-015a-49b5-a083-c84d1797ae8c (Microsoft Intune Enrollment), signInFrequency.frequencyInterval = everyTime.",
+      "expected": ">= 1 matching policy",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.2.12",
+      "title": "Device code flow is blocked",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: conditions.authenticationFlows.transferMethods contains deviceCodeFlow, grant block, All users.",
+      "expected": ">= 1 matching policy",
+      "severity": "High",
+      "notes": "Sign-in success from a blocked flow is NOT proof; only the policy counts."
+    },
+    {
+      "id": "5.2.2.13",
+      "title": "Sign-in frequency is set for all users",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: All users, signInFrequency isEnabled (any value; CIS gives guidance).",
+      "expected": ">= 1 matching policy",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.2.17",
+      "title": "Authentication transfer is blocked",
+      "area": "Conditional Access",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identity/conditionalAccess/policies"
+      ],
+      "rule": "CA engine: conditions.authenticationFlows.transferMethods contains authenticationTransfer, grant block.",
+      "expected": ">= 1 matching policy",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.1",
+      "title": "Authenticator shows app name and location",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/MicrosoftAuthenticator"
+      ],
+      "rule": "featureSettings.displayAppInformationRequiredState.state and displayLocationInformationRequiredState.state",
+      "expected": "both enabled, includeTarget all_users",
+      "severity": "Medium",
+      "notes": "Number matching is enforced by Microsoft; do not test it."
+    },
+    {
+      "id": "5.2.3.2",
+      "title": "Custom banned password list is enforced",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/groupSettings"
+      ],
+      "rule": "Settings object from template 5cf42378-d67d-4f36-ba46-e8b86229381d (Password Rule Settings): EnableBannedPasswordCheck, BannedPasswordList",
+      "expected": "true and list non-empty",
+      "severity": "Low",
+      "notes": "No settings object = defaults = Fail."
+    },
+    {
+      "id": "5.2.3.3",
+      "title": "Password protection is enforced on-premises",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/groupSettings"
+      ],
+      "rule": "Password Rule Settings: EnableBannedPasswordCheckOnPremises and BannedPasswordCheckOnPremisesMode",
+      "expected": "true and Enforce (N/A cloud-only)",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.4",
+      "title": "All member users are MFA capable",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/reports/authenticationMethods/userRegistrationDetails?$filter=userType eq 'member'"
+      ],
+      "rule": "isMfaCapable per member user",
+      "expected": "100% (exclude disabled/service accounts in UI)",
+      "severity": "High",
+      "notes": "Show count + downloadable list of non-capable users."
+    },
+    {
+      "id": "5.2.3.5",
+      "title": "SMS and voice sign-in are disabled",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authenticationMethodsPolicy"
+      ],
+      "rule": "authenticationMethodConfigurations Sms and Voice state",
+      "expected": "disabled",
+      "severity": "High",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.6",
+      "title": "System-preferred MFA is enabled",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authenticationMethodsPolicy"
+      ],
+      "rule": "systemCredentialPreferences.state and includeTargets",
+      "expected": "enabled for all_users",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.8",
+      "title": "Smart lockout threshold is 10 or less",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/groupSettings"
+      ],
+      "rule": "Password Rule Settings: LockoutThreshold",
+      "expected": "<= 10 (default 10 when no settings object)",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.9",
+      "title": "Smart lockout duration is 60 seconds or more",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/groupSettings"
+      ],
+      "rule": "Password Rule Settings: LockoutDurationInSeconds",
+      "expected": ">= 60 (default 60)",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.2.3.10",
+      "title": "Authenticator Lite (companion app) is disabled",
+      "area": "Auth methods",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/authenticationMethodsPolicy/authenticationMethodConfigurations/MicrosoftAuthenticator"
+      ],
+      "rule": "featureSettings.companionAppAllowedState.state",
+      "expected": "disabled",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.2.4.1",
+      "title": "Self-service password reset is enabled for all",
+      "area": "Password reset",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "SSPR scope is not exposed via Graph.",
+      "expected": "SSPR enabled for All",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.2.4.3",
+      "title": "SSPR registration is required and reconfirmed",
+      "area": "Password reset",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "Portal only.",
+      "expected": "Registration required at sign-in, reconfirm <= 180 days",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.2.4.4",
+      "title": "Users are notified of password resets",
+      "area": "Password reset",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "Portal only.",
+      "expected": "Notify users on password reset = Yes",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.2.4.5",
+      "title": "Admins are notified of admin password resets",
+      "area": "Password reset",
+      "checkType": "manual",
+      "graph": [],
+      "rule": "Portal only.",
+      "expected": "Notify all admins = Yes",
+      "severity": "Low",
+      "notes": null
+    },
+    {
+      "id": "5.3.2",
+      "title": "Guest access is reviewed regularly",
+      "area": "ID Governance",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identityGovernance/accessReviews/definitions"
+      ],
+      "rule": "Definitions whose scope targets guest users (query contains userType eq 'Guest').",
+      "expected": ">= 1 active recurring definition (requires P2/ID Governance)",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.3.3",
+      "title": "Privileged role assignments are reviewed",
+      "area": "ID Governance",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/identityGovernance/accessReviews/definitions"
+      ],
+      "rule": "Definitions scoped to directory role assignments (roleAssignmentScheduleInstances).",
+      "expected": ">= 1 covering privileged roles",
+      "severity": "Medium",
+      "notes": null
+    },
+    {
+      "id": "5.3.4",
+      "title": "Global Administrator activation needs approval",
+      "area": "ID Governance",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/roleManagementPolicyAssignments?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole' and roleDefinitionId eq '62e90394-69f5-4237-9190-012177145e10'&$expand=policy($expand=rules)"
+      ],
+      "rule": "rule id Approval_EndUser_Assignment: setting.isApprovalRequired",
+      "expected": "true with >= 1 approver",
+      "severity": "High",
+      "notes": "Authentication context on activation is good but is NOT approval."
+    },
+    {
+      "id": "5.3.5",
+      "title": "Privileged Role Administrator activation needs approval",
+      "area": "ID Governance",
+      "checkType": "auto",
+      "graph": [
+        "GET /v1.0/policies/roleManagementPolicyAssignments?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole' and roleDefinitionId eq 'e8611ab8-c189-46e8-94e1-60213ab1f814'&$expand=policy($expand=rules)"
+      ],
+      "rule": "rule id Approval_EndUser_Assignment: setting.isApprovalRequired",
+      "expected": "true with >= 1 approver",
+      "severity": "High",
+      "notes": null
+    }
+  ]
+}

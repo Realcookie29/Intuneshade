@@ -1,104 +1,58 @@
-// ─── IntuneShade Baseline — shared types ──────────────────────────────────────
-// The baseline is our own control set. It *references* CIS benchmark IDs and
-// NIS2 / Cyberbeveiligingswet articles but never reproduces CIS text.
+// ─── CIS L1 benchmark — shared types ──────────────────────────────────────────
+// Checks come from cis-l1-tenant.json (CIS IDs + our own titles and rules).
+// Each check is evaluated by a small evaluator keyed on its id.
 
-export type Profile = "L1" | "L2" | "Extended";
-export type Severity = "critical" | "high" | "medium" | "low";
-export type FindingStatus = "pass" | "fail" | "manual" | "not_applicable" | "error";
+export type CheckState = "Pass" | "Fail" | "Partial" | "Manual" | "NotApplicable" | "Error";
+export type Severity = "High" | "Medium" | "Low";
+export type CheckType = "auto" | "auto-beta" | "manual";
 
 /** NIS2 art. 21(2) measures (a–j). */
 export type Nis2Measure = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j";
 
-export interface ControlRefs {
-  /** Indicative CIS references, e.g. "M365 5.2.2.2". Verify against your licensed benchmark version. */
-  cis: string[];
-  nis2: Nis2Measure[];
-}
-
-export interface Control {
+export interface TenantCheck {
   id: string;
   title: string;
-  /** Why it matters — our own words. */
-  rationale: string;
-  category: "identity" | "access" | "endpoint" | "compliance";
-  profile: Profile;
+  area: string;
+  checkType: CheckType;
+  graph: string[];
+  rule: string;
+  expected: string;
   severity: Severity;
-  refs: ControlRefs;
-  /** Snapshot sources this control needs; a failed source makes the result "error", not "fail". */
-  sources: SourceKey[];
-  check: { evaluator: string; params?: Record<string, unknown> };
-  /** Static fallback advice, used when no AI model is configured. */
-  remediation: string;
+  notes?: string;
 }
 
-// ─── Snapshot (Collector output) ──────────────────────────────────────────────
-
-export type SourceKey =
-  | "caPolicies"
-  | "securityDefaults"
-  | "authorizationPolicy"
-  | "authMethodsPolicy"
-  | "globalAdmins"
-  | "configurationPolicies"
-  | "deviceConfigurations"
-  | "compliancePolicies"
-  | "deviceManagementSettings"
-  | "complianceSummary";
-
-export interface SourceResult<T = unknown> {
-  ok: boolean;
-  /** Graph endpoint the data came from — shown as evidence. */
-  endpoint: string;
-  data?: T;
-  error?: string;
+/** One reproducible fact: which Graph path, which property, which value. */
+export interface Evidence {
+  source: string;
+  path: string;
+  value: unknown;
 }
 
-export type TenantSnapshot = Partial<Record<SourceKey, SourceResult>> & {
-  collectedAt: string;
-};
-
-// Minimal shapes of the Graph objects the evaluators read.
-
-export interface CaPolicy {
+export interface CheckResult {
   id: string;
+  state: CheckState;
+  actual: string;
+  expected: string;
+  evidence: Evidence[];
+  message: string;
+  /** Optional detail list (e.g. users who are not MFA capable), exportable as CSV. */
+  table?: { name: string; columns: string[]; rows: string[][] };
+}
+
+export interface ManualAnswer {
+  answer: "Pass" | "Fail" | "NotApplicable";
+  notes: string;
+  updated: string;
+}
+
+export interface BreakGlassAccount {
+  id: string;
+  userPrincipalName: string;
   displayName: string;
-  state: "enabled" | "disabled" | "enabledForReportingButNotEnforced";
-  conditions?: {
-    users?: { includeUsers?: string[]; excludeUsers?: string[]; includeRoles?: string[]; excludeGroups?: string[] };
-    applications?: { includeApplications?: string[] };
-    clientAppTypes?: string[];
-    signInRiskLevels?: string[];
-    userRiskLevels?: string[];
-  };
-  grantControls?: {
-    builtInControls?: string[];
-    authenticationStrength?: { id: string; displayName?: string } | null;
-  } | null;
-}
-
-export interface IntunePolicy {
-  id: string;
-  name?: string;
-  displayName?: string;
-  isAssigned?: boolean;
-  templateReference?: { templateFamily?: string } | null;
-  "@odata.type"?: string;
-  assignments?: unknown[];
-}
-
-// ─── Assessor / Advisor / Reporter output ─────────────────────────────────────
-
-export interface Finding {
-  controlId: string;
-  status: FindingStatus;
-  /** One-line, human-readable outcome. */
-  summary: string;
-  /** Raw facts backing the outcome (endpoint + relevant values). */
-  evidence: { endpoint?: string; facts: string[] };
 }
 
 export interface Advice {
-  controlId: string;
+  id: string;
   explanation: string;
   priority: 1 | 2 | 3 | 4 | 5;
   effort: "low" | "medium" | "high";
@@ -108,22 +62,23 @@ export interface Advice {
   source: "ai" | "static";
 }
 
-export interface FrameworkScore {
-  passed: number;
-  failed: number;
-  manual: number;
-  errors: number;
-  /** passed / (passed + failed), 0–100. Manual/error/n.a. excluded. */
+export interface StateCounts {
+  Pass: number;
+  Fail: number;
+  Partial: number;
+  Manual: number;
+  NotApplicable: number;
+  Error: number;
+  /** Pass / (Pass + Fail + Partial), 0–100. Manual, N/A and Error are excluded. */
   score: number;
 }
 
 export interface BenchmarkReport {
   generatedAt: string;
   tenantName: string;
-  profile: Profile;
-  overall: FrameworkScore;
-  byCategory: Record<Control["category"], FrameworkScore>;
-  byNis2: Record<Nis2Measure, FrameworkScore>;
+  overall: StateCounts;
+  byArea: Record<string, StateCounts>;
+  byNis2: Record<Nis2Measure, StateCounts>;
   executiveSummary: string;
   keyRisks: string[];
   summarySource: "ai" | "static";

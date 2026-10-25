@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Advice, BenchmarkReport, Finding, Profile, TenantSnapshot } from "../baseline/types";
+import type { Advice, BenchmarkReport, CheckResult } from "../baseline/types";
 
 export type AgentId = "collector" | "assessor" | "advisor" | "reporter";
 export type AgentStatus = "idle" | "working" | "done" | "error";
@@ -35,24 +35,23 @@ interface AgentRunState {
   running: boolean;
   /** Increments on every start — lets views tell runs apart. */
   runId: number;
-  profile: Profile;
   agents: Record<AgentId, AgentState>;
   log: LogEntry[];
   handoff: Handoff | null;
-  snapshot: TenantSnapshot | null;
-  findings: Finding[];
+  results: CheckResult[];
   advice: Advice[];
   report: BenchmarkReport | null;
+  /** Co-managed devices found (ConfigMgr) — null when unknown. */
+  coManaged: boolean | null;
   error: string | null;
 
-  setProfile: (p: Profile) => void;
   reset: () => void;
   start: () => void;
   finish: (error?: string) => void;
   updateAgent: (id: AgentId, patch: Partial<AgentState>) => void;
   addLog: (agent: AgentId, kind: LogEntry["kind"], text: string) => void;
   handOff: (from: AgentId, to: AgentId, label: string) => void;
-  setResults: (patch: Partial<Pick<AgentRunState, "snapshot" | "findings" | "advice" | "report">>) => void;
+  setResults: (patch: Partial<Pick<AgentRunState, "results" | "advice" | "report" | "coManaged">>) => void;
 }
 
 let logSeq = 0;
@@ -62,26 +61,24 @@ let handoffSeq = 0;
 export const useAgentRunStore = create<AgentRunState>((set) => ({
   running: false,
   runId: 0,
-  profile: "L1",
   agents: { collector: idle(), assessor: idle(), advisor: idle(), reporter: idle() },
   log: [],
   handoff: null,
-  snapshot: null,
-  findings: [],
+  results: [],
   advice: [],
   report: null,
+  coManaged: null,
   error: null,
 
-  setProfile: (profile) => set({ profile }),
   reset: () =>
     set({
       agents: { collector: idle(), assessor: idle(), advisor: idle(), reporter: idle() },
       log: [],
       handoff: null,
-      snapshot: null,
-      findings: [],
+      results: [],
       advice: [],
       report: null,
+      coManaged: null,
       error: null,
     }),
   start: () => set((s) => ({ running: true, error: null, runId: s.runId + 1 })),
