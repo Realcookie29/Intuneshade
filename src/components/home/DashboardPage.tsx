@@ -6,6 +6,7 @@ import {
   ScanRegular, WarningFilled, PulseRegular, PeopleTeamRegular, ArrowSwapRegular,
   GridRegular, ArrowSyncCircleRegular, AlertRegular, HistoryRegular, ChevronRightRegular,
   DocumentTableRegular,
+  BotRegular,
 } from "@fluentui/react-icons";
 import PageHeader from "../layout/PageHeader";
 import { ACCENTS, FONTS } from "../../theme/theme";
@@ -202,6 +203,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (tool: ToolV
             <div className={styles.card}>
               <div className={styles.cardHead}><ArrowSwapRegular /><span className={styles.cardTitle}>Quick actions</span></div>
               <div className={styles.quick}>
+                <Button className={styles.quickBtn} appearance="subtle" icon={<BotRegular />} onClick={() => onNavigate("agents")}>Benchmark (agents)</Button>
                 <Button className={styles.quickBtn} appearance="subtle" icon={<DocumentTableRegular />} onClick={() => onNavigate("assignmentReport")}>Assignment Report</Button>
                 <Button className={styles.quickBtn} appearance="subtle" icon={<GridRegular />} onClick={() => onNavigate("map")}>Assignment Matrix</Button>
                 <Button className={styles.quickBtn} appearance="subtle" icon={<ArrowSwapRegular />} onClick={() => onNavigate("compareDeviceUser")}>Device + User Compare</Button>

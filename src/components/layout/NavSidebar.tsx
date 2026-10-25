@@ -27,6 +27,7 @@ import {
   DocumentBulletList24Regular,
   Tag24Regular,
   ShieldTask24Regular,
+  Bot24Regular,
   Warning24Regular,
   ChevronRight16Regular,
   SearchRegular,
@@ -52,6 +53,7 @@ export type ToolView =
   | "audit"
   | "groupMembership"
   | "memberOfMigration"
+  | "agents"
   | "autopilotTags"
   | "compareDevice"
   | "compareDeviceUser";
@@ -103,6 +105,7 @@ const GROUPS: GroupDef[] = [
     id: "govern",
     label: "Governance",
     tools: [
+      { key: "agents", label: "Place for your agents", icon: <Bot24Regular /> },
       { key: "backup", label: "Backup & Restore", icon: <ArrowSyncCircle24Regular /> },
       { key: "audit", label: "Audit History", icon: <History24Regular /> },
       { key: "memberOfMigration", label: "memberOf Migration", icon: <Warning24Regular /> },

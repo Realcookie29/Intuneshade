@@ -4,24 +4,31 @@ import type { GraphListResponse } from "../types/graphTypes";
 
 const BASE_URL = "https://graph.microsoft.com/beta";
 
-async function getToken(): Promise<string> {
+/**
+ * Acquires a Graph token. `scopes` lets a feature ask for extra (read) scopes on
+ * demand — incremental consent — instead of adding them to the sign-in request
+ * for every user. Graph tokens carry all scopes consented so far, so a token
+ * fetched for extra scopes also works for the regular calls.
+ */
+async function getToken(scopes?: string[]): Promise<string> {
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length === 0) throw new Error("Not signed in");
 
+  const req = scopes ? { scopes } : loginRequest;
   try {
     const result = await msalInstance.acquireTokenSilent({
-      ...loginRequest,
+      ...req,
       account: accounts[0],
     });
     return result.accessToken;
   } catch {
-    const result = await msalInstance.acquireTokenPopup(loginRequest);
+    const result = await msalInstance.acquireTokenPopup(req);
     return result.accessToken;
   }
 }
 
-async function request(method: string, path: string, body?: unknown): Promise<unknown> {
-  const token = await getToken();
+async function request(method: string, path: string, body?: unknown, scopes?: string[]): Promise<unknown> {
+  const token = await getToken(scopes);
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
@@ -42,8 +49,8 @@ async function request(method: string, path: string, body?: unknown): Promise<un
   return JSON.parse(text);
 }
 
-export async function graphGet<T>(path: string): Promise<T> {
-  return request("GET", path) as Promise<T>;
+export async function graphGet<T>(path: string, scopes?: string[]): Promise<T> {
+  return request("GET", path, undefined, scopes) as Promise<T>;
 }
 
 /** GET an OData $count endpoint (requires the ConsistencyLevel: eventual header). */
@@ -58,7 +65,7 @@ export async function graphGetCount(path: string): Promise<number> {
 }
 
 /** Fetches all pages and returns the concatenated value array. */
-export async function graphGetAll<T>(path: string): Promise<T[]> {
+export async function graphGetAll<T>(path: string, scopes?: string[]): Promise<T[]> {
   const results: T[] = [];
   let nextPath: string | null = path;
 
@@ -67,7 +74,7 @@ export async function graphGetAll<T>(path: string): Promise<T[]> {
       ? nextPath.replace("https://graph.microsoft.com/beta", "")
       : nextPath;
 
-    const page = (await request("GET", url)) as GraphListResponse<T>;
+    const page = (await request("GET", url, undefined, scopes)) as GraphListResponse<T>;
     results.push(...(page.value ?? []));
 
     nextPath = page["@odata.nextLink"] ?? null;

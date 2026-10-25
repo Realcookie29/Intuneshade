@@ -18,6 +18,7 @@ import PolicySettingsSearchPage from "../search/PolicySettingsSearchPage";
 import AssignmentFiltersPage from "../filters/AssignmentFiltersPage";
 import AuditHistoryPage from "../audit/AuditHistoryPage";
 import MemberOfMigrationPage from "../governance/MemberOfMigrationPage";
+import AgentPlacePage from "../agents/AgentPlacePage";
 import GroupMembershipPage from "../groups/GroupMembershipPage";
 import AutopilotGroupTagPage from "../autopilot/AutopilotGroupTagPage";
 import DeviceCompliancePage from "../compliance/DeviceCompliancePage";
@@ -268,6 +269,10 @@ export default function AppShell() {
           ) : activeTool === "audit" ? (
             <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>
               <AuditHistoryPage />
+            </div>
+          ) : activeTool === "agents" ? (
+            <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>
+              <AgentPlacePage />
             </div>
           ) : activeTool === "memberOfMigration" ? (
             <div className={styles.content} style={{ padding: 0, overflow: "hidden" }}>

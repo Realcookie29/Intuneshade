@@ -23,7 +23,7 @@ cd api && npm run build # Bundle claude.ts → dist/functions/claude.js via esbu
 1. Copy `api/local.settings.json.example` → `api/local.settings.json` (no keys needed; the AI key is provided per-request from the UI).
 2. Run frontend and API in two separate terminals.
 
-There are no automated tests in this project.
+Tests: `npm test` (Vitest) — currently covers the IntuneShade Baseline evaluators and engine (`src/baseline/baseline.test.ts`). Everything else is verified with `npm run build` / `npm run dev`.
 
 ## Architecture
 
@@ -39,11 +39,16 @@ This is a **multi-tenant SPA** (no per-user server infrastructure) with a thin A
   - `conflictStore` — manages conflict scan results
 - **memberOf migration (temporary)**: `src/utils/memberOfRule.ts` (pure rule parser, no Graph imports), `src/services/memberOfScanService.ts` (scan + remediation suggestions) and `src/components/governance/MemberOfMigrationPage.tsx`. This is a time-boxed migration aid for the Entra ID `memberOf` retirement — delete all three files, the `memberOfMigration` entry in `ToolView`/`NavSidebar`/`AppShell`, and the Dashboard quick action once the deadline in `MEMBEROF_RETIREMENT_DATE` has passed.
 - **Required Apps report**: `src/services/requiredAppsReportService.ts` (pure — turns `PolicyRow[]` into a self-contained HTML document) and `src/services/deploymentProfileService.ts` (Graph: a deployment profile's devices + their transitive Entra groups, cached per profile since it costs two calls per device). The page is `src/components/report/RequiredAppsReportPage.tsx`, reachable from the sidebar and from the Applications toolbar. Note: interactive report previews must live on a **page**, not inside a Fluent `Dialog` — the dialog's focus trap swallows keystrokes aimed at the iframe, which breaks the in-report search box.
+- **IntuneShade Baseline + agents** ("Place for your agents", ToolView `agents`):
+  - `src/baseline/` — our own control set (`controls.json`), pure `evaluators.ts`, `index.ts` (assess, score, NIS2 labels + manual checklist). Controls *reference* CIS IDs (indicative) and NIS2 art. 21(2) measures; never copy CIS benchmark text (licensing). Never claim "NIS2/CIS compliant" anywhere — it's a technical readiness check.
+  - `src/services/agents/` — `collector` (Graph, read-only, per-source error isolation → controls become `error`, never false `fail`), `advisor` + `reporter` (AI optional, static fallback, output validated, scripts display-only), `orchestrator` (pipeline + events into `agentRunStore`).
+  - `src/services/ai/provider.ts` — `byok` (via `/api/claude` modes `advise`/`report`) or `ollama` (browser → `http://localhost:11434`, allowed in the CSP; user sets `OLLAMA_ORIGINS`). Prompts live in `src/services/ai/prompts.ts` **and** in `api/src/functions/claude.ts` — keep both in sync. The AI only ever receives findings, never the raw snapshot; names can be masked (`ai/mask.ts`).
+  - Extra read scopes (`BASELINE_SCOPES` in `msalConfig.ts`) are requested incrementally at the first benchmark via the optional `scopes` argument of `graphGet`/`graphGetAll` — not at sign-in.
 - **Main orchestrator** (`src/components/layout/AppShell.tsx`): Holds page-level routing state (which "mode" is active: policy type view, bulk assign, conflict, map, report). All dialogs are rendered here.
 - **UI**: Fluent UI v9 (`@fluentui/react-components`). Use `makeStyles` for all component styling.
 
 ### Backend (`api/src/functions/claude.ts`)
-Single Azure Function (`POST /api/claude`) that proxies to the Anthropic API. Accepts four `mode` values: `analyze`, `script`, `resolve`, `compliance`. The user's API key is passed per-request via `X-Api-Key` header. There is intentionally no server-side fallback key (the endpoint is anonymous, so a shared key could be abused); requests without `X-Api-Key` get a 401. The Azure OpenAI endpoint is validated to `*.openai.azure.com` to prevent SSRF.
+Single Azure Function (`POST /api/claude`) that proxies to the Anthropic API. Accepts `mode` values `analyze`, `script`, `resolve`, `compliance`, plus `advise` and `report` for the benchmark agents. Request bodies are capped at 512 KB. The user's API key is passed per-request via `X-Api-Key` header. There is intentionally no server-side fallback key (the endpoint is anonymous, so a shared key could be abused); requests without `X-Api-Key` get a 401. The Azure OpenAI endpoint is validated to `*.openai.azure.com` to prevent SSRF.
 
 The API is bundled as a single file with esbuild (`npm run build` in `api/`). Only `@azure/functions` is an external; everything else including the Anthropic SDK is bundled in.
 

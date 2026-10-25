@@ -29,3 +29,14 @@ export const loginRequest: PopupRequest = {
     "Directory.Read.All",
   ],
 };
+
+/**
+ * Extra read-only scopes for the IntuneShade Baseline benchmark. Requested on
+ * demand (incremental consent) when a benchmark starts — not at sign-in — so
+ * users who never run a benchmark are never asked for them.
+ */
+export const BASELINE_SCOPES = [
+  ...loginRequest.scopes,
+  "Policy.Read.All",                 // Conditional Access, security defaults, authorization + auth-methods policies
+  "RoleManagement.Read.Directory",   // Privileged role members
+];
