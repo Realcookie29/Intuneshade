@@ -15,7 +15,7 @@
     "@azure/msal-browser": "^5.6.3",
     "@azure/msal-react": "^5.2.1",
     "@fluentui/react-components": "^9.73.7",
-    "@fluentui/react-icons": "^2.0.323",
+    "@fluentui/react-icons": "^2.0.344",
     "@xyflow/react": "^12.10.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
