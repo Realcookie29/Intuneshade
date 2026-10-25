@@ -70,6 +70,7 @@ const useStyles = makeStyles({
     border: "1px solid rgba(255,255,255,0.08)",
     backgroundColor: "#141823",
     contain: "layout paint",
+    flexShrink: 0,
   },
   /** Ambient animations stop when the office is quiet or scrolled out of view. */
   paused: {

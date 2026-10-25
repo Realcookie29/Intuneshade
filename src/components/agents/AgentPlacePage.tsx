@@ -73,7 +73,8 @@ const LOG_COLOR: Record<LogEntry["kind"], string> = {
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
-  scroll: { flex: 1, overflowY: "auto", padding: "20px 28px 28px", display: "flex", flexDirection: "column", gap: "20px" },
+  // Children must not shrink: a growing activity feed would otherwise squash the office.
+  scroll: { flex: 1, overflowY: "auto", padding: "20px 28px 28px", display: "flex", flexDirection: "column", gap: "20px", "& > *": { flexShrink: 0 } },
   controls: { display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" },
   modelBadge: { fontSize: tokens.fontSizeBase200 },
 
