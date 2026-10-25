@@ -20,7 +20,7 @@
     "@azure/functions": "^4.12.0",
     "@google/generative-ai": "^0.21.0",
     "jose": "5.10.0",
-    "openai": "^4.77.0",
+    "openai": "^7.42.0",
     "typescript": "^5.8.3"
   }
 }
