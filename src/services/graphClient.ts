@@ -1,6 +1,6 @@
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { msalInstance } from "../auth/msalInstance";
-import { loginRequest } from "../auth/msalConfig";
+import { WRITE_SCOPES, loginRequest } from "../auth/msalConfig";
 import type { GraphListResponse } from "../types/graphTypes";
 
 const GRAPH_ROOT = "https://graph.microsoft.com";
@@ -12,7 +12,7 @@ const BASE_URL = `${GRAPH_ROOT}/beta`;
  * ("/v1.0/…" or "/beta/…"), or be a full Graph URL such as an @odata.nextLink.
  */
 function toUrl(path: string): string {
-  if (path.startsWith(GRAPH_ROOT)) return path;
+  if (path.startsWith(`${GRAPH_ROOT}/`)) return path;
   if (path.startsWith("/v1.0/") || path.startsWith("/beta/")) return `${GRAPH_ROOT}${path}`;
   return `${BASE_URL}${path}`;
 }
@@ -139,20 +139,45 @@ export async function graphGetAll<T>(path: string, scopes?: string[]): Promise<T
   return results;
 }
 
-export async function graphPost(path: string, body: unknown): Promise<void> {
-  await request("POST", path, body);
+/** The page shown right now — reopened after a consent redirect. Set by AppShell. */
+let activeTool = "home";
+export function setActiveTool(tool: string) {
+  activeTool = tool;
 }
 
-export async function graphPostWithResponse<T>(path: string, body: unknown): Promise<T> {
+/** Thrown when a write needs consent first and the app is navigating to Microsoft. */
+export class ConsentRedirectError extends Error {
+  constructor() {
+    super("Microsoft is asking for write permission. Repeat the action after you return.");
+    this.name = "ConsentRedirectError";
+  }
+}
+
+/** Every tenant write goes through here: write scopes are requested on first use. */
+async function write(method: string, path: string, body?: unknown): Promise<unknown> {
+  if ((await ensureScopes(WRITE_SCOPES, activeTool)) === "redirecting") throw new ConsentRedirectError();
+  return request(method, path, body, WRITE_SCOPES);
+}
+
+/** POST for read-only actions such as /directoryObjects/getByIds — no write scopes. */
+export async function graphPostRead<T>(path: string, body: unknown): Promise<T> {
   return request("POST", path, body) as Promise<T>;
 }
 
+export async function graphPost(path: string, body: unknown): Promise<void> {
+  await write("POST", path, body);
+}
+
+export async function graphPostWithResponse<T>(path: string, body: unknown): Promise<T> {
+  return write("POST", path, body) as Promise<T>;
+}
+
 export async function graphPatch(path: string, body: unknown): Promise<void> {
-  await request("PATCH", path, body);
+  await write("PATCH", path, body);
 }
 
 export async function graphDelete(path: string): Promise<void> {
-  await request("DELETE", path);
+  await write("DELETE", path);
 }
 
 let tenantNameCache: string | null = null;
@@ -168,4 +193,28 @@ export async function getTenantName(): Promise<string> {
   const name = orgs[0]?.displayName?.trim() ?? "";
   tenantNameCache = name;
   return name;
+}
+
+const jwtExp = (jwt: string): number => {
+  try {
+    const payload = JSON.parse(atob(jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+    return payload.exp ?? 0;
+  } catch {
+    return 0;
+  }
+};
+
+/**
+ * The signed-in user's Entra ID token (audience = this app). The AI proxy
+ * requires it, so only signed-in IntuneShade users can use the proxy. An ID token
+ * close to expiry is refreshed through the refresh token.
+ */
+export async function getIdToken(): Promise<string> {
+  const account = msalInstance.getAllAccounts()[0];
+  if (!account) throw new Error("Not signed in");
+  let result = await msalInstance.acquireTokenSilent({ ...loginRequest, account });
+  if (jwtExp(result.idToken) * 1000 < Date.now() + 120_000) {
+    result = await msalInstance.acquireTokenSilent({ ...loginRequest, account, forceRefresh: true });
+  }
+  return result.idToken;
 }

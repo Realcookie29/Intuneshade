@@ -177,6 +177,21 @@ function BackupTab() {
 
 // ─── Restore ────────────────────────────────────────────────────────────────
 
+/** Script bodies in a policy (platform / remediation scripts), base64-decoded where possible. */
+function scriptsIn(value: unknown, out: string[] = []): string[] {
+  if (Array.isArray(value)) value.forEach((v) => scriptsIn(v, out));
+  else if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (/scriptcontent$/i.test(k) && typeof v === "string" && v) {
+        let text = v;
+        try { text = new TextDecoder().decode(Uint8Array.from(atob(v), (c) => c.charCodeAt(0))); } catch { /* not base64 */ }
+        out.push(text);
+      } else scriptsIn(v, out);
+    }
+  }
+  return out;
+}
+
 function RestoreTab() {
   const styles = useStyles();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -275,6 +290,15 @@ function RestoreTab() {
             <Button size="small" appearance="subtle" onClick={reset} disabled={running}>Choose another file</Button>
           </div>
 
+          {items.some((it) => it.selected && scriptsIn(it.policy).length > 0) && (
+            <MessageBar intent="warning">
+              <MessageBarBody>
+                Some selected policies contain scripts that run as SYSTEM on devices once assigned. Review each script
+                below and only restore backups from a source you trust.
+              </MessageBarBody>
+            </MessageBar>
+          )}
+
           {finished && (
             <MessageBar intent="success">
               <MessageBarBody>
@@ -301,8 +325,10 @@ function RestoreTab() {
                   </div>
                   {indices.map((idx) => {
                     const it = items[idx];
+                    const scripts = scriptsIn(it.policy);
                     return (
-                      <div key={idx} className={styles.policyRow}>
+                      <div key={idx}>
+                      <div className={styles.policyRow}>
                         <Checkbox checked={it.selected} onChange={() => toggle(idx)} disabled={running} />
                         <Text className={styles.policyName} size={300}>{policyDisplayName(it.policy)}</Text>
                         {it.status === "running" && <Spinner size="extra-tiny" />}
@@ -310,6 +336,16 @@ function RestoreTab() {
                         {it.status === "error" && (
                           <span title={it.error}><DismissCircleRegular style={{ color: tokens.colorStatusDangerForeground1 }} /></span>
                         )}
+                        {scripts.length > 0 && <Badge appearance="tint" color="warning" size="small">contains script</Badge>}
+                      </div>
+                      {scripts.length > 0 && (
+                        <details style={{ margin: "0 0 8px 36px" }}>
+                          <summary style={{ cursor: "pointer", fontSize: 12 }}>Review script{scripts.length > 1 ? `s (${scripts.length})` : ""}</summary>
+                          {scripts.map((sc, i) => (
+                            <pre key={i} style={{ fontSize: 12, maxHeight: 240, overflow: "auto", whiteSpace: "pre-wrap", background: tokens.colorNeutralBackground3, padding: 8, borderRadius: 4 }}>{sc.slice(0, 20000)}</pre>
+                          ))}
+                        </details>
+                      )}
                       </div>
                     );
                   })}

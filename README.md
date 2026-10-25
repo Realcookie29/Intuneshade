@@ -150,18 +150,20 @@ None required. Users provide their own AI provider key in the UI (sent per-reque
 
 The app uses a single multi-tenant App Registration. End users do **not** need to create their own.
 
-**Required API Permissions (Microsoft Graph — Delegated):**
+**API permissions (Microsoft Graph — Delegated).** IntuneShade asks for read access at sign-in and requests more only when a feature needs it (incremental consent):
 
-| Permission | Purpose |
-|-----------|---------|
-| `DeviceManagementApps.ReadWrite.All` | Mobile apps, app configurations |
-| `DeviceManagementConfiguration.ReadWrite.All` | Settings catalog, device configurations, compliance |
-| `DeviceManagementManagedDevices.ReadWrite.All` | Device management |
-| `DeviceManagementScripts.ReadWrite.All` | Platform scripts, remediation scripts |
-| `DeviceManagementServiceConfig.ReadWrite.All` | Autopilot profiles, security baselines |
-| `Group.Read.All` | Resolve group names |
-| `GroupMember.ReadWrite.All` | Group Membership management (add/remove members) |
-| `Directory.Read.All` | Read directory objects (users, devices) |
+| When | Permission | Purpose |
+|------|-----------|---------|
+| Sign-in | `DeviceManagementApps.Read.All` | Mobile apps, app configurations |
+| Sign-in | `DeviceManagementConfiguration.Read.All` | Settings catalog, device configurations, compliance |
+| Sign-in | `DeviceManagementManagedDevices.Read.All` | Managed devices (read only — IntuneShade never writes to devices) |
+| Sign-in | `DeviceManagementScripts.Read.All` | Platform scripts, remediation scripts |
+| Sign-in | `DeviceManagementServiceConfig.Read.All` | Autopilot profiles, enrollment settings |
+| Sign-in | `Group.Read.All`, `Directory.Read.All` | Resolve groups, users and devices |
+| First write action | `DeviceManagementApps.ReadWrite.All`, `DeviceManagementConfiguration.ReadWrite.All`, `DeviceManagementScripts.ReadWrite.All`, `DeviceManagementServiceConfig.ReadWrite.All`, `GroupMember.ReadWrite.All` | Assign, delete, enable/disable, restore, filters, group membership, Autopilot group tags |
+| First benchmark | `Policy.Read.All`, `RoleManagement.Read.Directory`, `RoleManagementPolicy.Read.Directory`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `AccessReview.Read.All`, `OnPremDirectorySynchronization.Read.All` | CIS L1 tenant checks (read only) |
+
+**AI features** use your own provider key. It is kept for the current browser tab unless you choose "remember on this device", and is sent per request through the IntuneShade proxy, which requires you to be signed in and never stores keys or prompts. Script bodies and secrets are stripped from policy JSON before it is sent to an AI provider.
 
 ---
 

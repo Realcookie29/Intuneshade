@@ -1,5 +1,5 @@
 import type { PolicyRow } from "../types/policyTypes";
-import { inlineReportScript } from "../utils/reportInteractivity";
+import { inlineReportScript, REPORT_CSP_META } from "../utils/reportInteractivity";
 
 export type AppPlatform = "Windows" | "iOS/iPadOS" | "macOS" | "Android" | "Web" | "Other";
 
@@ -486,7 +486,9 @@ export function requiredAppsReportScript(win: Window): void {
         tr.getAttribute("data-filter"),
         tr.getAttribute("data-devices"),
       ].map(function (v) {
-        return '"' + String(v || "").replace(/"/g, '""') + '"';
+        let s = String(v || "");
+        if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // neutralise spreadsheet formulas (self-contained: no imports here)
+        return '"' + s.replace(/"/g, '""') + '"';
       });
       lines.push(cells.join(","));
     });
@@ -563,7 +565,7 @@ export function buildRequiredAppsReportHtml(
   return `<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8">${REPORT_CSP_META}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Required Applications${profile ? ` — ${esc(profile.name)}` : ""} — ${esc(meta.tenantName)}</title>
 <style>

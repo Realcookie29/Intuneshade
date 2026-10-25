@@ -1,3 +1,5 @@
+import { callAiProxy } from "./ai/aiProxy";
+import { stripSensitive } from "./ai/sanitize";
 import { fetchPolicies } from "./policiesService";
 import type { PolicyType } from "../types/policyTypes";
 import { POLICY_DEFINITIONS } from "../utils/policyConfig";
@@ -128,39 +130,6 @@ export interface ComplianceReport {
   actionItems: ComplianceActionItem[];
 }
 
-export async function generateComplianceReport(
-  summary: TenantSummary,
-  apiKey: string
-): Promise<ComplianceReport> {
-  const provider = localStorage.getItem("intune_gm_ai_provider") ?? "anthropic";
-  const azureRaw = localStorage.getItem("intune_gm_azure_config");
-  const azure = azureRaw ? JSON.parse(azureRaw) as { endpoint: string; deployment: string } : null;
-  const extra = azure ? { azureEndpoint: azure.endpoint, azureDeployment: azure.deployment } : {};
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Api-Key": apiKey,
-    },
-    body: JSON.stringify({ mode: "compliance", provider, tenantSummary: summary, ...extra }),
-  });
-
-  const text = await res.text();
-  if (!res.ok) {
-    let msg = `API error ${res.status}`;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string") msg = j.error;
-      else msg = `API error ${res.status}: ${text.slice(0, 200)}`;
-    } catch {
-      msg = `API error ${res.status}: ${text.slice(0, 200)}`;
-    }
-    throw new Error(msg);
-  }
-
-  try {
-    return JSON.parse(text) as ComplianceReport;
-  } catch {
-    throw new Error(`Unexpected response format: ${text.slice(0, 200)}`);
-  }
+export async function generateComplianceReport(summary: TenantSummary): Promise<ComplianceReport> {
+  return (await callAiProxy({ mode: "compliance", tenantSummary: stripSensitive(summary) })) as ComplianceReport;
 }

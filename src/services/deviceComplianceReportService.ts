@@ -1,3 +1,4 @@
+import { REPORT_CSP_META } from "../utils/reportInteractivity";
 import {
   BUCKET_LABEL, BUCKET_COLOR, BUCKET_ORDER_HELPER,
   type ComplianceBucket, type ManagedDeviceLite, type ComplianceReason,
@@ -69,7 +70,7 @@ export function buildComplianceReportHtml(
     </tr>`).join("");
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8">${REPORT_CSP_META}<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Intune Device Compliance — ${esc(meta.tenantName)}</title>
 <style>
   :root { --bg:#0B0D13; --ink1:#0E1017; --ink2:#131620; --stroke:#242A38; --fg:#E8EAF0; --fg2:#A9B0C0; --fg3:#6B7386; --mint:#3DDC97; }

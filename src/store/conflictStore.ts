@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { callAiProxy } from "../services/ai/aiProxy";
 import type { DetectedConflict, PolicyForSettingCheck } from "../utils/conflictDetection";
 import type { PolicyType } from "../types/policyTypes";
 import { POLICY_DEFINITIONS } from "../utils/policyConfig";
@@ -24,7 +25,7 @@ interface ConflictState {
   resolvingId: string | null;
 
   scan: () => Promise<void>;
-  resolveWithAI: (conflict: DetectedConflict, apiKey: string) => Promise<void>;
+  resolveWithAI: (conflict: DetectedConflict) => Promise<void>;
   reset: () => void;
 }
 
@@ -159,24 +160,18 @@ export const useConflictStore = create<ConflictState>((set) => ({
     });
   },
 
-  resolveWithAI: async (conflict, apiKey) => {
+  resolveWithAI: async (conflict) => {
     set({ resolvingId: conflict.id });
     try {
-      const res = await fetch("/api/claude", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-        body: JSON.stringify({
-          mode: "resolve",
-          conflict: {
-            description: conflict.description,
-            policies: conflict.conflictingValues
-              ? conflict.conflictingValues.map((v) => v.policyName)
-              : [conflict.policyName],
-          },
-        }),
-      });
-      const data = await res.json() as { resolution?: string; steps?: string[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "AI resolution failed");
+      const data = (await callAiProxy({
+        mode: "resolve",
+        conflict: {
+          description: conflict.description,
+          policies: conflict.conflictingValues
+            ? conflict.conflictingValues.map((v) => v.policyName)
+            : [conflict.policyName],
+        },
+      })) as { resolution?: string; steps?: string[] };
 
       const text = [
         data.resolution ?? "",

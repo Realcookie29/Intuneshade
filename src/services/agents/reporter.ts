@@ -9,6 +9,10 @@ import {
 import type { Advice, BenchmarkReport, CheckResult, CheckState, ManualAnswer, Nis2Measure, StateCounts } from "../../baseline/types";
 import { runAgentPrompt } from "../ai/provider";
 import { maskFacts } from "../ai/mask";
+import { toCsv } from "../../utils/csv";
+import { REPORT_CSP_META } from "../../utils/reportInteractivity";
+
+export { toCsv };
 
 /** Areas in the order they appear in the baseline. */
 export const AREAS: string[] = [...new Set(CHECKS.map((c) => c.area))];
@@ -119,17 +123,6 @@ export const STATE_LABEL: Record<CheckState, string> = {
   Pass: "Pass", Fail: "Fail", Partial: "Partial", Manual: "Manual", NotApplicable: "N/A", Error: "Error",
 };
 
-function csvCell(v: unknown): string {
-  let s = String(v ?? "");
-  // Neutralise spreadsheet formulas — tenant strings are untrusted.
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\n\r;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-export function toCsv(columns: string[], rows: unknown[][]): string {
-  return [columns, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
-}
-
 export function resultsCsv(results: CheckResult[], answers: Record<string, ManualAnswer>): string {
   return toCsv(
     ["CIS ID", "Title", "Area", "Severity", "State", "Answered manually", "Expected", "Actual", "Message", "Notes"],
@@ -185,7 +178,7 @@ export function renderReportHtml(report: BenchmarkReport, results: CheckResult[]
   }).join("");
 
   const o = report.overall;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${REPORT_CSP_META}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IntuneShade baseline report — ${esc(report.tenantName || "tenant")}</title>
 <style>

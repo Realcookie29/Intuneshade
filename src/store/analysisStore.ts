@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { callAiProxy } from "../services/ai/aiProxy";
+import { stripSensitive } from "../services/ai/sanitize";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,49 +58,8 @@ interface AnalysisState {
 
 // ─── API helper ───────────────────────────────────────────────────────────────
 
-function getAiConfig() {
-  const provider = localStorage.getItem("intune_gm_ai_provider") ?? "anthropic";
-  const key = localStorage.getItem(`intune_gm_key_${provider}`);
-  const azureRaw = localStorage.getItem("intune_gm_azure_config");
-  const azure = azureRaw ? JSON.parse(azureRaw) as { endpoint: string; deployment: string } : null;
-  return { key, provider, azure };
-}
-
-async function callClaudeApi(body: unknown): Promise<unknown> {
-  const { key: userKey, provider, azure } = getAiConfig();
-  if (!userKey) {
-    throw new Error("NO_API_KEY");
-  }
-
-  const extra = azure ? { azureEndpoint: azure.endpoint, azureDeployment: azure.deployment } : {};
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Api-Key": userKey,
-    },
-    body: JSON.stringify({ ...(body as object), provider, ...extra }),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    let msg = `API error ${res.status}`;
-    try {
-      const j = JSON.parse(text) as { error?: string; type?: string };
-      // Surface Anthropic API errors cleanly
-      if (typeof j.error === "string") {
-        msg = j.error;
-      } else if (j.error && typeof j.error === "object") {
-        const ae = j.error as { message?: string };
-        if (ae.message?.includes("credit balance")) {
-          msg = "Your Anthropic account has no credits. Add credits at console.anthropic.com → Billing.";
-        } else if (ae.message) {
-          msg = ae.message;
-        }
-      }
-    } catch { /* ignore */ }
-    throw new Error(msg);
-  }
-  return JSON.parse(text);
+async function callClaudeApi(body: Record<string, unknown>): Promise<unknown> {
+  return callAiProxy(body);
 }
 
 function makeCacheKey(ids: string[]): string {
@@ -138,7 +99,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     try {
       const result = await callClaudeApi({
         mode: "analyze",
-        policies: policies.map((p) => ({ name: p.name, type: p.type, json: p.json })),
+        policies: policies.map((p) => ({ name: p.name, type: p.type, json: stripSensitive(p.json) })),
       }) as AnalysisResult;
 
       set((state) => ({

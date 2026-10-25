@@ -45,6 +45,7 @@ export default function TopBar() {
   const providerInfo = PROVIDERS.find((p) => p.id === provider)!;
 
   const handleLogout = () => {
+    useApiKeyStore.getState().clearOnSignOut();
     instance.logoutRedirect({ account, postLogoutRedirectUri: window.location.origin });
   };
 

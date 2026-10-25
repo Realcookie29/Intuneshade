@@ -3,7 +3,8 @@
 //   byok   → /api/claude proxy with the user's own key (Claude, OpenAI, Gemini, Azure)
 //   ollama → local Ollama server, straight from the browser (no proxy, no egress)
 
-import { useApiKeyStore, getAzureConfig, PROVIDERS } from "../../store/apiKeyStore";
+import { useApiKeyStore, PROVIDERS } from "../../store/apiKeyStore";
+import { callAiProxy } from "./aiProxy";
 import { useAgentModelStore } from "../../store/agentModelStore";
 import { ADVISE_SYSTEM, REPORT_SYSTEM } from "./prompts";
 
@@ -39,31 +40,8 @@ export function currentModel(): ModelInfo {
   return { engine: "static", label: "Built-in rules (no AI)", leavesDevice: false };
 }
 
-async function callProxy(mode: AgentMode, payload: unknown, signal?: AbortSignal): Promise<unknown> {
-  const { provider, apiKey } = useApiKeyStore.getState();
-  if (!apiKey) throw new Error("No API key configured");
-  const azure = provider === "azure-openai" ? getAzureConfig() : null;
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
-    body: JSON.stringify({
-      mode,
-      provider,
-      payload,
-      ...(azure ? { azureEndpoint: azure.endpoint, azureDeployment: azure.deployment } : {}),
-    }),
-    signal,
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    let msg = `API error ${res.status}`;
-    try {
-      const j = JSON.parse(text) as { error?: string };
-      if (typeof j.error === "string") msg = j.error;
-    } catch { /* keep generic */ }
-    throw new Error(msg);
-  }
-  return JSON.parse(text);
+function callProxy(mode: AgentMode, payload: unknown, signal?: AbortSignal): Promise<unknown> {
+  return callAiProxy({ mode, payload }, signal);
 }
 
 async function callOllama(mode: AgentMode, payload: unknown, signal?: AbortSignal): Promise<unknown> {

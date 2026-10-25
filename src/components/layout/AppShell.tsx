@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { makeStyles, tokens, Text } from "@fluentui/react-components";
 import TopBar from "./TopBar";
 import NavSidebar, { type ToolView } from "./NavSidebar";
+import { TOOL_VIEWS } from "./toolViews";
 import BulkAssignPage from "../bulk/BulkAssignPage";
 import DeletePolicyDialog from "../bulk/DeletePolicyDialog";
 import CloneDialog from "../bulk/CloneDialog";
@@ -43,7 +44,7 @@ import { useAnalysisStore } from "../../store/analysisStore";
 import { useApiKeyStore } from "../../store/apiKeyStore";
 import { useDashboardStore } from "../../store/dashboardStore";
 import { exportPoliciesToJson } from "../../services/bulkActionsService";
-import { RESUME_TOOL_KEY } from "../../services/graphClient";
+import { RESUME_TOOL_KEY, setActiveTool as setGraphActiveTool } from "../../services/graphClient";
 
 const useStyles = makeStyles({
   root: {
@@ -100,7 +101,8 @@ export default function AppShell() {
     try {
       const resume = sessionStorage.getItem(RESUME_TOOL_KEY);
       sessionStorage.removeItem(RESUME_TOOL_KEY);
-      if (resume === "agents") return "agents";
+      const tool = TOOL_VIEWS.find((t) => t === resume);
+      if (tool) return tool;
     } catch { /* ignore */ }
     return "home";
   });
@@ -121,6 +123,9 @@ export default function AppShell() {
   // Warm up the shared tenant scan once at login, as soon as the group cache is
   // ready. Every data page (Home, Assignment Report, Matrix, Compare) then reads
   // from this cache instantly; only a manual Refresh/Rescan re-hits Graph.
+  // Lets a write that needs consent come back to this page after the redirect.
+  useEffect(() => { setGraphActiveTool(activeTool ?? "home"); }, [activeTool]);
+
   useEffect(() => {
     if (!groupsLoading) useDashboardStore.getState().ensureLoaded();
   }, [groupsLoading]);

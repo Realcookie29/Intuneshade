@@ -15,7 +15,7 @@ import {
   buildReportHtml, downloadReportHtml, type ReportGrouping, type ReportOptions,
   assignmentReportScript,
 } from "../../services/assignmentReportService";
-import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
+import { openReportInNewTab, wireReport, REPORT_IFRAME_SANDBOX } from "../../utils/reportInteractivity";
 
 const C = {
   bg: "#FAF9F6", ink: "#201D19", ink2: "#57524B", ink3: "#8A847A",
@@ -381,7 +381,7 @@ export default function JsonExplorerPage({ onBack }: { onBack: () => void }) {
           </aside>
 
           <section className={styles.preview}>
-            <iframe className={styles.frame} title="Imported assignment report" srcDoc={html}
+            <iframe className={styles.frame} title="Imported assignment report" sandbox={REPORT_IFRAME_SANDBOX} srcDoc={html}
               onLoad={(e) => wireReport(e.currentTarget.contentWindow, assignmentReportScript)}
             />
           </section>

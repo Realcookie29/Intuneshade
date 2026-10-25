@@ -5,7 +5,8 @@ import type { PolicyType } from "../types/policyTypes";
 
 // ─── Device & user lookup ────────────────────────────────────────────────────
 
-const esc = (s: string) => s.trim().replace(/'/g, "''");
+/** OData string literal, URL-encoded so &, # or + in user input cannot alter the query. */
+const esc = (s: string) => encodeURIComponent(s.trim().replace(/'/g, "''"));
 
 /** Best-effort autocomplete for managed devices (falls back to empty on filter errors). */
 export async function searchDevices(query: string): Promise<ManagedDevice[]> {
@@ -87,11 +88,10 @@ export interface ResolvedUser {
 }
 
 export async function resolveUser(upnOrId: string): Promise<ResolvedUser> {
-  const q = esc(upnOrId);
   let user: DirectoryMember;
   try {
     user = await graphGet<DirectoryMember>(
-      `/users/${encodeURIComponent(q)}?$select=id,displayName,userPrincipalName,mail,jobTitle`
+      `/users/${encodeURIComponent(upnOrId.trim())}?$select=id,displayName,userPrincipalName,mail,jobTitle`
     );
   } catch {
     throw new Error(`No user found for "${upnOrId}".`);

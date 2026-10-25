@@ -1,0 +1,14 @@
+# Keeps the SHA-pinned GitHub Actions and npm dependencies current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /api
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5

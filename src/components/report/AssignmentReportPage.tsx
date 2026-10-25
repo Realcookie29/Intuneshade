@@ -16,7 +16,7 @@ import {
   type ReportGrouping, type ReportOptions,
   assignmentReportScript,
 } from "../../services/assignmentReportService";
-import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
+import { openReportInNewTab, wireReport, REPORT_IFRAME_SANDBOX } from "../../utils/reportInteractivity";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -212,7 +212,7 @@ export default function AssignmentReportPage() {
           )}
 
           {status === "ready" && (
-            <iframe className={styles.frame} title="Assignment report preview" srcDoc={html}
+            <iframe className={styles.frame} title="Assignment report preview" sandbox={REPORT_IFRAME_SANDBOX} srcDoc={html}
               onLoad={(e) => wireReport(e.currentTarget.contentWindow, assignmentReportScript)}
             />
           )}

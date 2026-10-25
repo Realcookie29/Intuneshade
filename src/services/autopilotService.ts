@@ -1,3 +1,4 @@
+import { toCsv } from "../utils/csv";
 import { graphGet, graphGetAll, graphPost } from "./graphClient";
 
 /** A Windows Autopilot device identity (subset of fields we use). */
@@ -144,6 +145,5 @@ export function parseSerialsFromText(text: string): string[] {
 
 /** Build a CSV backup of current serial → group tag pairs (undo safety net). */
 export function buildTagBackupCsv(devices: AutopilotDevice[]): string {
-  const rows = devices.map((d) => `${d.serialNumber},${(d.groupTag ?? "").replace(/,/g, " ")}`);
-  return ["Device Serial Number,Group Tag", ...rows].join("\r\n");
+  return toCsv(["Device Serial Number", "Group Tag"], devices.map((d) => [d.serialNumber, d.groupTag ?? ""]));
 }

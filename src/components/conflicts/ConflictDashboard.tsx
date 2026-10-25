@@ -277,7 +277,7 @@ function ConflictCard({ conflict }: { conflict: DetectedConflict }) {
 
   const handleResolve = () => {
     if (!apiKey) { openDialog(); return; }
-    resolveWithAI(conflict, apiKey);
+    resolveWithAI(conflict);
   };
 
   return (

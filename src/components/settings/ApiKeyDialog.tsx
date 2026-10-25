@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Dialog, DialogSurface, DialogTitle, DialogBody,
   DialogContent, DialogActions, Button, Input, Text,
-  makeStyles, tokens, Badge, Link, Tab, TabList, Label,
+  makeStyles, tokens, Badge, Link, Tab, TabList, Label, Switch,
 } from "@fluentui/react-components";
 import type { SelectTabData, SelectTabEvent } from "@fluentui/react-components";
 import { KeyRegular, DeleteRegular, CheckmarkCircle24Regular } from "@fluentui/react-icons";
@@ -47,7 +47,7 @@ const useStyles = makeStyles({
 
 export default function ApiKeyDialog() {
   const styles = useStyles();
-  const { provider, keys, dialogOpen, setProvider, setKey, clearKey, closeDialog } = useApiKeyStore();
+  const { provider, keys, dialogOpen, remember, setRemember, setProvider, setKey, clearKey, closeDialog } = useApiKeyStore();
 
   const [draftKey, setDraftKey] = useState("");
   const [draftEndpoint, setDraftEndpoint] = useState(getAzureConfig()?.endpoint ?? "");
@@ -193,8 +193,18 @@ export default function ApiKeyDialog() {
               <Text className={styles.note}>
                 {isAzure
                   ? <>Find your endpoint and key in the <Link href={info.consoleUrl} target="_blank">Azure Portal</Link> under your Azure OpenAI resource → Keys and Endpoint. This is the same service that powers Microsoft Copilot for Enterprise.</>
-                  : <>Get your API key at <Link href={info.consoleUrl} target="_blank">{info.consoleName}</Link>. Keys are stored only in your browser — never on any server.</>
+                  : <>Get your API key at <Link href={info.consoleUrl} target="_blank">{info.consoleName}</Link>. Your key is sent with each AI request through the IntuneShade proxy to the provider, and is never stored on a server.</>
                 }
+              </Text>
+              <Switch
+                checked={remember}
+                onChange={(_, d) => setRemember(d.checked)}
+                label={remember ? "Remember keys on this device" : "Keep keys for this browser tab only"}
+              />
+              <Text className={styles.note}>
+                {remember
+                  ? "Keys stay in this browser (localStorage) until you remove them. Avoid this on shared machines."
+                  : "Keys are forgotten when you close the tab or sign out."}
               </Text>
             </div>
           </DialogContent>

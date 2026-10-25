@@ -1,4 +1,4 @@
-import { graphGetAll, graphGet, graphPostWithResponse } from "./graphClient";
+import { graphGetAll, graphGet, graphPostRead } from "./graphClient";
 import type { GraphGroup, AssignmentFilter } from "../types/graphTypes";
 import type { GraphPolicy, PolicyType } from "../types/policyTypes";
 import { getPolicyDefinition } from "../utils/policyConfig";
@@ -21,7 +21,7 @@ export async function fetchGroupNamesByIds(ids: string[]): Promise<Map<string, s
   for (let i = 0; i < unique.length; i += 1000) {
     const chunk = unique.slice(i, i + 1000);
     try {
-      const res = await graphPostWithResponse<{ value: { id: string; displayName?: string }[] }>(
+      const res = await graphPostRead<{ value: { id: string; displayName?: string }[] }>(
         "/directoryObjects/getByIds",
         { ids: chunk, types: ["group"] }
       );

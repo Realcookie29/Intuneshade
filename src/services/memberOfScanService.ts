@@ -1,3 +1,4 @@
+import { csvCell } from "../utils/csv";
 import { graphGet, graphGetAll } from "./graphClient";
 import { getAssignments, isAssignmentsCached, type AssignmentRecord, type ScanProgress } from "./assignmentScanService";
 import {
@@ -480,10 +481,6 @@ export { isAssignmentsCached };
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
-function csvCell(value: string | number): string {
-  const s = String(value ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /** Migration ticks, passed in from the progress store so this stays pure. */
 export type CsvProgressLookup = (id: string) => { checked: boolean; done: boolean; updated: string };

@@ -231,7 +231,7 @@ export default function ComplianceReportPage() {
       setTenantSummary(summary);
 
       setPhase("generating");
-      const result = await generateComplianceReport(summary, apiKey);
+      const result = await generateComplianceReport(summary);
       setReport(result);
       setPhase("done");
     } catch (e) {

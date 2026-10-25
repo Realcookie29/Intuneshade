@@ -15,6 +15,20 @@
  */
 export type ReportScript = (win: Window) => void;
 
+/**
+ * Sandbox for report preview iframes: no scripts of their own (the app wires the
+ * behaviour from outside, which needs allow-same-origin), downloads for CSV
+ * export, modals for print, and links that open in a normal tab.
+ */
+export const REPORT_IFRAME_SANDBOX = "allow-same-origin allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox";
+
+/**
+ * CSP for downloaded report files: the report's own inline script and styles
+ * may run, but nothing can be loaded from or sent to another host.
+ */
+export const REPORT_CSP_META =
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'; base-uri 'none'">`;
+
 /** The <script> block embedded in the report HTML (effective in the downloaded file). */
 export function inlineReportScript(fn: ReportScript): string {
   return `<script>(${fn.toString()})(window);</script>`;

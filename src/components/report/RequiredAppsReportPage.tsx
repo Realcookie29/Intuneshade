@@ -29,7 +29,7 @@ import {
   type ProfileReportInfo,
   requiredAppsReportScript,
 } from "../../services/requiredAppsReportService";
-import { openReportInNewTab, wireReport } from "../../utils/reportInteractivity";
+import { openReportInNewTab, wireReport, REPORT_IFRAME_SANDBOX } from "../../utils/reportInteractivity";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" },
@@ -428,7 +428,7 @@ export default function RequiredAppsReportPage() {
               </Text>
             </div>
           ) : (
-            <iframe className={styles.frame} title="Required applications report" srcDoc={html}
+            <iframe className={styles.frame} title="Required applications report" sandbox={REPORT_IFRAME_SANDBOX} srcDoc={html}
               onLoad={(e) => wireReport(e.currentTarget.contentWindow, requiredAppsReportScript)}
             />
           )}

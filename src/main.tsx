@@ -41,7 +41,7 @@ function renderError(message: string) {
     <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Segoe UI,sans-serif;background:#f3f2f1;">
       <div style="background:white;padding:40px;border-radius:8px;max-width:480px;box-shadow:0 2px 8px rgba(0,0,0,.12);">
         <h2 style="color:#d13438;margin:0 0 12px">Configuration error</h2>
-        <p style="color:#323130;margin:0 0 16px">${message}</p>
+        <p id="config-error-message" style="color:#323130;margin:0 0 16px"></p>
         <p style="color:#605e5c;font-size:13px;margin:0">
           Make sure <code style="background:#edebe9;padding:2px 6px;border-radius:3px">VITE_CLIENT_ID</code>
           is set in your <code style="background:#edebe9;padding:2px 6px;border-radius:3px">.env.local</code>
@@ -49,6 +49,7 @@ function renderError(message: string) {
         </p>
       </div>
     </div>`;
+  root.querySelector("#config-error-message")!.textContent = message;
 }
 
 msalInstance

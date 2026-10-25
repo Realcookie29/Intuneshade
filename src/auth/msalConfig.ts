@@ -17,24 +17,41 @@ export const msalConfig: Configuration = {
   },
 };
 
+/**
+ * Sign-in asks for read access only. Write scopes (WRITE_SCOPES) are requested
+ * incrementally the first time a user performs a write action, so a token held
+ * by someone who only reads reports cannot change the tenant.
+ */
 export const loginRequest: PopupRequest = {
   scopes: [
-    "DeviceManagementApps.ReadWrite.All",
-    "DeviceManagementConfiguration.ReadWrite.All",
-    "DeviceManagementManagedDevices.ReadWrite.All",
-    "DeviceManagementScripts.ReadWrite.All",         // Platform Scripts + Remediation Scripts
-    "DeviceManagementServiceConfig.ReadWrite.All",   // Autopilot profiles
+    "DeviceManagementApps.Read.All",
+    "DeviceManagementConfiguration.Read.All",
+    "DeviceManagementManagedDevices.Read.All",
+    "DeviceManagementScripts.Read.All",              // Platform Scripts + Remediation Scripts
+    "DeviceManagementServiceConfig.Read.All",        // Autopilot profiles
     "Group.Read.All",
-    "GroupMember.ReadWrite.All",                     // Group Membership management
     "Directory.Read.All",
   ],
 };
 
 /**
+ * Write scopes, requested on the first write (assign, delete, enable/disable,
+ * restore, filters, group membership, Autopilot group tags). IntuneShade never
+ * writes to managed devices, so there is no ManagedDevices.ReadWrite scope.
+ */
+export const WRITE_SCOPES = [
+  ...loginRequest.scopes,
+  "DeviceManagementApps.ReadWrite.All",
+  "DeviceManagementConfiguration.ReadWrite.All",
+  "DeviceManagementScripts.ReadWrite.All",
+  "DeviceManagementServiceConfig.ReadWrite.All",
+  "GroupMember.ReadWrite.All",
+];
+
+/**
  * Extra read-only scopes for the CIS L1 benchmark. Requested on demand
  * (incremental consent) when a benchmark starts — not at sign-in — so users who
- * never run a benchmark are never asked for them. Intune read access is covered
- * by the ReadWrite scopes above.
+ * never run a benchmark are never asked for them.
  */
 export const BASELINE_SCOPES = [
   ...loginRequest.scopes,

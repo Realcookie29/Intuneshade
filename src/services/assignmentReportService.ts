@@ -1,7 +1,7 @@
 import type { AssignmentRecord } from "./assignmentScanService";
 import { POLICY_DEFINITIONS } from "../utils/policyConfig";
 import type { PolicyType } from "../types/policyTypes";
-import { inlineReportScript } from "../utils/reportInteractivity";
+import { inlineReportScript, REPORT_CSP_META } from "../utils/reportInteractivity";
 
 export type ReportGrouping = "group" | "policyType" | "policy";
 
@@ -271,7 +271,7 @@ export function buildReportHtml(
   return `<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8">${REPORT_CSP_META}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Intune Assignment Report — ${esc(meta.tenantName)}</title>
 <style>
