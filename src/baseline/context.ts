@@ -4,7 +4,7 @@
 // failures into a typed outcome, so an evaluator can say "missing permission"
 // or "endpoint not available" instead of crashing.
 
-import type { BreakGlassAccount, CheckResult, CheckState, Evidence } from "./types";
+import type { BreakGlassAccount, CheckResult, CheckState, DeviceScopePref, Evidence } from "./types";
 
 export type Fetched<T> =
   | { ok: true; data: T; path: string }
@@ -20,6 +20,8 @@ export interface CheckOptions {
   breakGlass: BreakGlassAccount[];
   /** Scan every user for per-user MFA (5.1.2.1) instead of privileged users only. */
   fullPerUserMfaScan: boolean;
+  /** Scope for the Windows device settings; tenant-wide when omitted. */
+  deviceScope?: DeviceScopePref;
 }
 
 export interface CheckContext {

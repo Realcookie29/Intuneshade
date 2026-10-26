@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 // The reporter imports the AI provider, which reads browser storage at load time.
 vi.mock("../services/ai/provider", () => ({ runAgentPrompt: vi.fn() }));
 
-import { CHECKS, EVALUATORS, checkById, countStates, effectiveState, runCheck } from "./index";
+import { CHECKS, EVALUATORS, TENANT_CHECKS, WINDOWS_CHECKS, checkById, countStates, effectiveState, isWindowsArea, runCheck } from "./index";
 import { createContext, isoDays, type CheckOptions } from "./context";
 import { CA_POLICIES, evaluateCa, grantMfa, type CaPolicy } from "./checks/ca";
 import { GROUP_SETTINGS } from "./checks/authMethods";
@@ -60,9 +60,11 @@ const mfaAll = policy({ displayName: "CA001 MFA", grantControls: { builtInContro
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 describe("check registry", () => {
-  it("has 52 unique tenant checks with titles", () => {
-    expect(CHECKS).toHaveLength(52);
-    expect(new Set(CHECKS.map((c) => c.id)).size).toBe(52);
+  it("has 52 tenant checks plus the Windows settings, all unique with titles", () => {
+    expect(TENANT_CHECKS).toHaveLength(52);
+    expect(WINDOWS_CHECKS.length).toBeGreaterThanOrEqual(100);
+    expect(CHECKS).toHaveLength(TENANT_CHECKS.length + WINDOWS_CHECKS.length);
+    expect(new Set(CHECKS.map((c) => c.id)).size).toBe(CHECKS.length);
     for (const c of CHECKS) expect(c.title, c.id).toBeTruthy();
   });
 
@@ -303,12 +305,13 @@ describe("check selection", () => {
 
   it("presets select whole areas", () => {
     const { applyPreset } = useBenchmarkPrefs.getState();
+    const selected = () => { const ex = new Set(useBenchmarkPrefs.getState().excludedChecks); return CHECKS.filter((c) => !ex.has(c.id)); };
     applyPreset("intune");
-    const excluded = new Set(useBenchmarkPrefs.getState().excludedChecks);
-    expect(CHECKS.filter((c) => !excluded.has(c.id)).every((c) => c.area === "Intune")).toBe(true);
+    expect(selected().every((c) => c.area === "Intune" || isWindowsArea(c.area))).toBe(true);
+    applyPreset("windows");
+    expect(selected()).toHaveLength(WINDOWS_CHECKS.length);
     applyPreset("entra");
-    const excluded2 = new Set(useBenchmarkPrefs.getState().excludedChecks);
-    expect(CHECKS.filter((c) => !excluded2.has(c.id)).some((c) => c.area === "Intune")).toBe(false);
+    expect(selected().some((c) => c.area === "Intune" || isWindowsArea(c.area))).toBe(false);
     applyPreset("all");
     expect(useBenchmarkPrefs.getState().excludedChecks).toEqual([]);
   });
@@ -316,7 +319,7 @@ describe("check selection", () => {
   it("reports coverage for a partial run", () => {
     const base = { actual: "", expected: "", evidence: [], message: "" };
     const cov = coverageOf([{ ...base, id: "4.1", state: "Pass" }, { ...base, id: "4.2", state: "Fail" }]);
-    expect(cov).toMatchObject({ assessed: 2, total: 52 });
+    expect(cov).toMatchObject({ assessed: 2, total: CHECKS.length });
     expect(cov.areasNotAssessed).toContain("Conditional Access");
     expect(cov.areasNotAssessed).not.toContain("Intune");
   });

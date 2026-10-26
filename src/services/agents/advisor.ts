@@ -6,7 +6,7 @@
 // The AI only ever sees results — never raw Graph responses — and its output is
 // validated and treated as display-only text. Scripts are never executed.
 
-import { checkById } from "../../baseline";
+import { checkById, isWindowsArea } from "../../baseline";
 import type { Advice, CheckResult, Severity } from "../../baseline/types";
 import { runAgentPrompt } from "../ai/provider";
 import { maskFacts } from "../ai/mask";
@@ -18,6 +18,9 @@ export const NEEDS_ADVICE = new Set(["Fail", "Partial", "Manual", "Error"]);
 export function staticAdvice(r: CheckResult): Advice {
   const c = checkById(r.id);
   const steps = [`Target: ${r.expected}.`];
+  if (c && isWindowsArea(c.area)) {
+    steps.push("Set it in a settings catalog or endpoint security policy and assign that policy to the devices in scope (check for conflicting policies first).");
+  }
   if (c?.notes) steps.push(c.notes);
   return {
     id: r.id,

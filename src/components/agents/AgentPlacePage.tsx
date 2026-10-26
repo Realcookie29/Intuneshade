@@ -51,7 +51,7 @@ interface AgentDef {
 
 const AGENTS: AgentDef[] = [
   { id: "collector", name: "Collector", role: "Reads your tenant via Microsoft Graph (read-only)", icon: <DatabaseSearch24Regular />, usesAi: false },
-  { id: "assessor", name: "Assessor", role: "Evaluates the CIS L1 tenant checks (with a NIS2 view)", icon: <ClipboardTaskListLtr24Regular />, usesAi: false },
+  { id: "assessor", name: "Assessor", role: "Evaluates the CIS L1 tenant checks and Windows settings (with a NIS2 view)", icon: <ClipboardTaskListLtr24Regular />, usesAi: false },
   { id: "advisor", name: "Advisor", role: "Explains what's missing and how to fix it", icon: <Lightbulb24Regular />, usesAi: true },
   { id: "reporter", name: "Reporter", role: "Scores everything and writes the report", icon: <DocumentData24Regular />, usesAi: true },
 ];
@@ -319,7 +319,7 @@ export default function AgentPlacePage() {
       <PageHeader
         eyebrow="IntuneShade baseline"
         title="Place for your agents"
-        subtitle="Four agents benchmark your tenant against the CIS Microsoft 365 L1 tenant checks, with a NIS2 view. Collection and scoring are read-only and deterministic; AI only explains and summarises."
+        subtitle="Four agents benchmark your tenant against the CIS Microsoft 365 L1 tenant checks and the CIS Windows 11 L1 settings Intune assigns (tenant-wide or per Autopilot deployment profile), with a NIS2 view. Collection and scoring are read-only and deterministic; AI only explains and summarises."
         icon={<Bot24Regular />}
       />
       <div className={styles.scroll}>

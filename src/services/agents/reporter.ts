@@ -3,8 +3,8 @@
 // writes the executive summary and key risks. Also renders the HTML export.
 
 import {
-  BASELINE_NAME, BASELINE_SOURCE, CHECKS, NIS2_MANUAL_CHECKS, NIS2_MEASURES,
-  checkById, countStates, effectiveState, nis2For,
+  BASELINE_NAME, BASELINE_SOURCE, CHECKS, NIS2_MANUAL_CHECKS, NIS2_MEASURES, WINDOWS_SOURCE,
+  checkById, countStates, effectiveState, isWindowsArea, nis2For,
 } from "../../baseline";
 import type { Advice, BenchmarkReport, CheckResult, CheckState, Coverage, ManualAnswer, Nis2Measure, StateCounts } from "../../baseline/types";
 import { runAgentPrompt } from "../ai/provider";
@@ -28,9 +28,9 @@ export function coverageOf(results: CheckResult[]): Coverage {
   };
 }
 
-/** "18 of 52 CIS L1 tenant checks" — or "all 52" for a full run. */
+/** "18 of 156 CIS L1 checks" — or "all 156" for a full run. */
 export function coverageLabel(c: Coverage): string {
-  return c.assessed >= c.total ? `all ${c.total} CIS L1 tenant checks` : `${c.assessed} of ${c.total} CIS L1 tenant checks`;
+  return c.assessed >= c.total ? `all ${c.total} CIS L1 checks` : `${c.assessed} of ${c.total} CIS L1 checks`;
 }
 
 /** Scores over effective states (manual answers included). Pure — the UI recomputes it live. */
@@ -75,6 +75,8 @@ export interface ReporterHooks {
   mask: boolean;
   onWarning: (text: string) => void;
   signal?: AbortSignal;
+  /** Description of the Windows device-settings scope, when Windows checks ran. */
+  deviceScope?: string;
 }
 
 export async function buildReport(
@@ -86,7 +88,7 @@ export async function buildReport(
 ): Promise<BenchmarkReport> {
   const scores = scoreResults(results, answers);
   const coverage = coverageOf(results);
-  const base = { generatedAt: new Date().toISOString(), tenantName, ...scores, coverage };
+  const base = { generatedAt: new Date().toISOString(), tenantName, ...scores, coverage, deviceScope: hooks.deviceScope };
   const fallback = staticSummary(scores, results, answers, coverage);
 
   if (hooks.useAi) {
@@ -101,8 +103,9 @@ export async function buildReport(
           summary: hooks.mask ? maskFacts([r.message])[0] : r.message,
         }));
       const res = (await runAgentPrompt("report", {
-        benchmark: "CIS Microsoft 365 L1 — tenant checks",
+        benchmark: "CIS Microsoft 365 L1 tenant checks + CIS Windows 11 L1 device settings (Intune configuration intent)",
         coverage,
+        deviceScope: hooks.deviceScope,
         overall: scores.overall,
         byArea: Object.fromEntries(Object.entries(scores.byArea).map(([a, s]) => [a, s.score])),
         nis2: Object.fromEntries(Object.entries(scores.byNis2).map(([m, s]) => [`${m}: ${NIS2_MEASURES[m as Nis2Measure]}`, s.score])),
@@ -213,7 +216,7 @@ pre{background:#f5f5f7;padding:10px;overflow:auto;font-size:12px;white-space:pre
 @media print{details{display:block}details>summary{display:none}}
 </style></head><body>
 <h1>IntuneShade baseline — ${esc(report.tenantName || "tenant")}</h1>
-<div class="muted">Scope: ${esc(coverageLabel(report.coverage))} · generated ${esc(new Date(report.generatedAt).toLocaleString())} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
+<div class="muted">Scope: ${esc(coverageLabel(report.coverage))}${report.deviceScope ? ` · Windows settings: ${esc(report.deviceScope)}` : ""} · generated ${esc(new Date(report.generatedAt).toLocaleString())} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
 <div class="kpis">
 <div class="kpi"><b>${o.score}%</b>score on ${report.coverage.assessed}/${report.coverage.total} checks</div>
 <div class="kpi"><b>${o.Pass}</b>pass</div>
@@ -233,6 +236,6 @@ ${report.keyRisks.length ? `<ul>${report.keyRisks.map((r) => `<li>${esc(r)}</li>
 <h2>NIS2 / Cyberbeveiligingswet — technical readiness per art. 21(2) measure</h2>
 <table><thead><tr><th></th><th>Measure</th><th>Technical checks</th></tr></thead><tbody>${nis2Rows}</tbody></table>
 <h2>About this report</h2>
-<p class="disclaimer">This is an automated, read-only technical check of a Microsoft 365 tenant. It is not an audit and not a compliance statement. Check IDs refer to the CIS Microsoft 365 Foundations Benchmark® published by the Center for Internet Security (scope: ${esc(BASELINE_SOURCE)}); the descriptions are IntuneShade's own. Verify results against the benchmark version you are licensed for. NIS2 also requires organisational measures that a tenant scan cannot verify (see the checklist above).</p>
+<p class="disclaimer">This is an automated, read-only technical check of a Microsoft 365 tenant${results.some((r) => isWindowsArea(checkById(r.id)?.area ?? "")) ? " and its Intune Windows configuration" : ""}. It is not an audit and not a compliance statement. Check IDs refer to the CIS Microsoft 365 Foundations Benchmark® published by the Center for Internet Security (scope: ${esc(BASELINE_SOURCE)}); the descriptions are IntuneShade's own. Windows device-setting IDs (prefixed “W-”) refer to the CIS Microsoft Windows 11 Enterprise Benchmark® (scope: ${esc(WINDOWS_SOURCE)}); they judge the configuration Intune assigns (settings catalog and endpoint security policies), not the state reported by devices. Verify results against the benchmark version you are licensed for. NIS2 also requires organisational measures that a tenant scan cannot verify (see the checklist above).</p>
 </body></html>`;
 }

@@ -11,10 +11,20 @@ import { AUTH_CHECKS, AUTH_METHODS, GROUP_SETTINGS } from "./checks/authMethods"
 import { INTUNE_CHECKS, ENROLLMENT_CONFIGS } from "./checks/intune";
 import { GOVERNANCE_CHECKS, ACCESS_REVIEWS } from "./checks/governance";
 import { ASSIGNMENTS, ELIGIBILITY } from "./checks/roles";
+import { CONFIG_POLICIES, WINDOWS_CHECKS, WINDOWS_EVALUATORS } from "./checks/windows";
+import { WINDOWS_AREAS } from "./windows/mapping";
 
 export const BASELINE_NAME: string = baselineJson.name;
 export const BASELINE_SOURCE: string = baselineJson.source;
-export const CHECKS = baselineJson.tenantChecks as TenantCheck[];
+export const WINDOWS_SOURCE = "CIS Microsoft Windows 11 Enterprise Benchmark v3.0.0 - Level 1 + BitLocker, subset configurable through the Intune settings catalog";
+/** The 52 M365 tenant checks. */
+export const TENANT_CHECKS = baselineJson.tenantChecks as TenantCheck[];
+/** Tenant checks followed by the Windows device settings (ids prefixed "W-"). */
+export const CHECKS: TenantCheck[] = [...TENANT_CHECKS, ...WINDOWS_CHECKS];
+export { WINDOWS_CHECKS };
+
+const WINDOWS_AREA_SET = new Set<string>(WINDOWS_AREAS);
+export const isWindowsArea = (area: string) => WINDOWS_AREA_SET.has(area);
 
 type Evaluator = (ctx: CheckContext, id: string, expected: string) => Promise<CheckResult>;
 
@@ -26,6 +36,7 @@ export const EVALUATORS: Record<string, Evaluator> = {
   ...CA_CHECKS,
   ...AUTH_CHECKS,
   ...GOVERNANCE_CHECKS,
+  ...WINDOWS_EVALUATORS,
 };
 
 /**
@@ -48,6 +59,7 @@ export const SHARED_SOURCES: SharedSource[] = [
   { label: "Licences", path: SUBSCRIBED_SKUS, all: true, areas: ["Conditional Access", "Admin accounts"] },
   { label: "Enrollment restrictions", path: ENROLLMENT_CONFIGS, all: true, areas: ["Intune"] },
   { label: "Access reviews", path: ACCESS_REVIEWS, all: true, areas: ["ID Governance"], scope: "AccessReview.Read.All" },
+  { label: "Windows configuration policies", path: CONFIG_POLICIES, all: true, areas: WINDOWS_AREAS },
 ];
 
 /** Shared sources worth prefetching for a run over `checks` with `extraScopes` granted. */
@@ -71,6 +83,12 @@ const AREA_NIS2: Record<string, Nis2Measure[]> = {
   "Auth methods": ["j"],
   "Password reset": ["i"],
   "ID Governance": ["i", "f"],
+  "Windows: BitLocker": ["h"],
+  "Windows: Defender": ["e", "g"],
+  "Windows: Firewall": ["e"],
+  "Windows: LAPS": ["i"],
+  "Windows: Audit": ["b"],
+  "Windows: Hardening": ["e", "g"],
 };
 
 export function nis2For(check: TenantCheck): Nis2Measure[] {

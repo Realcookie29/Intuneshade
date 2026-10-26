@@ -45,6 +45,9 @@ export interface ManualAnswer {
   updated: string;
 }
 
+/** Which devices the Windows settings are judged for: tenant-wide, or the devices of one Autopilot deployment profile. */
+export type DeviceScopePref = { kind: "tenant" } | { kind: "profile"; id: string; name: string };
+
 export interface BreakGlassAccount {
   id: string;
   userPrincipalName: string;
@@ -88,6 +91,8 @@ export interface BenchmarkReport {
   byNis2: Record<Nis2Measure, StateCounts>;
   /** How much of the benchmark this run assessed — always shown next to the score. */
   coverage: Coverage;
+  /** Scope of the Windows device settings ("tenant-wide …" / "deployment profile …"), when any were assessed. */
+  deviceScope?: string;
   executiveSummary: string;
   keyRisks: string[];
   summarySource: "ai" | "static";

@@ -2,7 +2,7 @@
 // Runs the four agents as a pipeline — Collector → Assessor → Advisor → Reporter —
 // and narrates every step into agentRunStore for the "Place for your agents" page.
 
-import { CHECKS, countStates, runCheck, sharedSourcesFor } from "../../baseline";
+import { CHECKS, countStates, isWindowsArea, runCheck, sharedSourcesFor } from "../../baseline";
 import { extraScopesFor } from "../../baseline/scopes";
 import type { CheckResult } from "../../baseline/types";
 import { useAgentRunStore, type AgentId } from "../../store/agentRunStore";
@@ -12,6 +12,7 @@ import { ensureScopes, getTenantName } from "../graphClient";
 import { loginRequest } from "../../auth/msalConfig";
 import { currentModel } from "../ai/provider";
 import { isCoManaged } from "../../baseline/checks/intune";
+import { describeWindowsScope, windowsInventorySummary } from "../../baseline/checks/windows";
 import { collectShared, createGraphContext } from "./collector";
 import { advise, NEEDS_ADVICE } from "./advisor";
 import { buildReport } from "./reporter";
@@ -33,11 +34,12 @@ export async function runBenchmark(): Promise<void> {
   const { updateAgent, addLog, handOff, setResults } = useAgentRunStore.getState();
   const model = currentModel();
   const { maskNames } = useAgentModelStore.getState();
-  const { breakGlass, fullPerUserMfaScan, manualAnswers, excludedChecks } = useBenchmarkPrefs.getState();
+  const { breakGlass, fullPerUserMfaScan, manualAnswers, excludedChecks, deviceScope } = useBenchmarkPrefs.getState();
   const excluded = new Set(excludedChecks);
   const checks = CHECKS.filter((c) => !excluded.has(c.id));
   const extraScopes = extraScopesFor(checks.map((c) => c.id));
   const scopes = [...loginRequest.scopes, ...extraScopes];
+  const windowsCount = checks.filter((c) => isWindowsArea(c.area)).length;
   const useAi = model.engine !== "static";
   const mask = model.leavesDevice && maskNames;
   let current: AgentId = "collector";
@@ -55,20 +57,27 @@ export async function runBenchmark(): Promise<void> {
       return;
     }
     addLog("collector", "info", "Starting read-only collection. Only GET requests — no changes are made to the tenant.");
-    const ctx = createGraphContext({ breakGlass, fullPerUserMfaScan }, scopes, (path) => addLog(current, "graph", `GET ${path}`));
+    const ctx = createGraphContext({ breakGlass, fullPerUserMfaScan, deviceScope }, scopes, (path) => addLog(current, "graph", `GET ${path}`));
     const okCount = await collectShared(ctx, sharedSourcesFor(checks, extraScopes), {
       signal,
       onRequest: () => {},
       onSource: (i, total, label) => updateAgent("collector", { task: `Reading ${label}`, progress: i / total }),
       onSourceDone: (label, ok, detail) => addLog("collector", ok ? "info" : "warn", `${label}: ${detail}`),
     });
+    if (windowsCount) {
+      updateAgent("collector", { task: deviceScope.kind === "profile" ? `Resolving devices of “${deviceScope.name}”` : "Reading Windows policy inventory", progress: 0.9 });
+      const inv = await windowsInventorySummary(ctx);
+      addLog("collector", inv.ok ? "info" : "warn", `Windows policies: ${inv.text}`);
+      for (const w of inv.warnings) addLog("collector", "warn", w);
+      addLog("collector", "info", `Windows settings scope: ${await describeWindowsScope(ctx)}. Only assigned policies count — configuration intent, not device state.`);
+    }
     updateAgent("collector", { status: "done", task: "Shared data read", progress: 1, output: `${okCount} sources read` });
     handOff("collector", "assessor", `${okCount} sources`);
 
     // ── Assessor ───────────────────────────────────────────────────────────────
     current = "assessor";
     updateAgent("assessor", { status: "working", task: "Loading CIS L1 checks", progress: 0 });
-    addLog("assessor", "info", `Evaluating ${checks.length} of ${CHECKS.length} CIS L1 tenant checks — deterministic rules, no AI.`);
+    addLog("assessor", "info", `Evaluating ${checks.length} of ${CHECKS.length} CIS L1 checks (${checks.length - windowsCount} tenant, ${windowsCount} Windows device settings) — deterministic rules, no AI.`);
     if (!breakGlass.length && checks.some((c) => c.area === "Conditional Access")) addLog("assessor", "warn", "No break-glass accounts set — CA exclusions cannot be told apart from emergency access (see Run options).");
     const results: CheckResult[] = [];
     for (const [i, check] of checks.entries()) {
@@ -109,6 +118,7 @@ export async function runBenchmark(): Promise<void> {
     const tenantName = await getTenantName().catch(() => "");
     updateAgent("reporter", { task: useAi ? "Writing executive summary" : "Composing summary", progress: 0.5 });
     const report = await buildReport(results, advice, manualAnswers, tenantName, {
+      deviceScope: windowsCount ? await describeWindowsScope(ctx) : undefined,
       useAi,
       mask,
       signal,

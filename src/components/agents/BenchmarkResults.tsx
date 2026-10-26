@@ -335,7 +335,7 @@ export default function BenchmarkResults({ report, results, advice, coManaged }:
           </MenuPopover>
         </Menu>
       </div>
-      <Text className={styles.disclaimer}>Score = Pass / (Pass + Partial + Fail) over {coverageLabel(report.coverage)}. Manual, N/A and Error are not scored; answering a manual check counts it.</Text>
+      <Text className={styles.disclaimer}>Score = Pass / (Pass + Partial + Fail) over {coverageLabel(report.coverage)}. Manual, N/A and Error are not scored; answering a manual check counts it.{report.deviceScope ? ` Windows settings judged for: ${report.deviceScope} — assigned configuration, not device state.` : ""}</Text>
       {report.coverage.assessed < report.coverage.total && (
         <div className={styles.banner}>
           Partial scan: {report.coverage.total - report.coverage.assessed} of {report.coverage.total} checks were not selected

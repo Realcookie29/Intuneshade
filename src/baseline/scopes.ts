@@ -4,6 +4,8 @@
 // scopes of the checks the admin selected — least privilege, and fewer
 // admin-consent hurdles for a partial scan.
 
+import { WINDOWS_MAPPINGS, windowsCheckId } from "./windows/mapping";
+
 const POLICY = "Policy.Read.All";
 const ROLES = "RoleManagement.Read.Directory";
 const PIM_POLICY = "RoleManagementPolicy.Read.Directory";
@@ -66,6 +68,10 @@ export const CHECK_SCOPES: Record<string, string[]> = {
   "5.3.4": [PIM_POLICY],
   "5.3.5": [PIM_POLICY],
 };
+
+// Windows device settings ("W-…") only read Intune configuration, Autopilot
+// profiles and device group membership — all covered by the sign-in scopes.
+for (const m of WINDOWS_MAPPINGS) CHECK_SCOPES[windowsCheckId(m.cis)] = [];
 
 /** Extra scopes (beyond sign-in) needed for the given checks, sorted and de-duplicated. */
 export function extraScopesFor(ids: Iterable<string>): string[] {

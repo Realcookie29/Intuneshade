@@ -1,19 +1,22 @@
 import { create } from "zustand";
-import type { BreakGlassAccount, ManualAnswer } from "../baseline/types";
-import { CHECKS } from "../baseline";
+import type { BreakGlassAccount, DeviceScopePref, ManualAnswer } from "../baseline/types";
+import { CHECKS, isWindowsArea } from "../baseline";
 
 /**
  * User input for the CIS benchmark: which checks to run, break-glass accounts,
  * scan options and answers to manual checks. Kept in this browser only (localStorage); nothing
  * is sent anywhere.
  */
-export type ChecksPreset = "all" | "entra" | "intune";
+export type ChecksPreset = "all" | "entra" | "intune" | "windows";
 
 interface BenchmarkPrefsState {
   /** Check ids the admin switched off. Stored as exclusions so new checks are on by default. */
   excludedChecks: string[];
   setChecks: (ids: string[], on: boolean) => void;
   applyPreset: (preset: ChecksPreset) => void;
+  /** Which devices the Windows settings are judged for. */
+  deviceScope: DeviceScopePref;
+  setDeviceScope: (scope: DeviceScopePref) => void;
   breakGlass: BreakGlassAccount[];
   fullPerUserMfaScan: boolean;
   manualAnswers: Record<string, ManualAnswer>;
@@ -25,7 +28,7 @@ interface BenchmarkPrefsState {
 
 const KEY = "intuneshade.benchmarkPrefs";
 
-type Persisted = Pick<BenchmarkPrefsState, "excludedChecks" | "breakGlass" | "fullPerUserMfaScan" | "manualAnswers">;
+type Persisted = Pick<BenchmarkPrefsState, "excludedChecks" | "deviceScope" | "breakGlass" | "fullPerUserMfaScan" | "manualAnswers">;
 
 function load(): Partial<Persisted> {
   try {
@@ -38,13 +41,27 @@ function load(): Partial<Persisted> {
 
 function save(s: Persisted) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ excludedChecks: s.excludedChecks, breakGlass: s.breakGlass, fullPerUserMfaScan: s.fullPerUserMfaScan, manualAnswers: s.manualAnswers }));
+    localStorage.setItem(KEY, JSON.stringify({ excludedChecks: s.excludedChecks, deviceScope: s.deviceScope, breakGlass: s.breakGlass, fullPerUserMfaScan: s.fullPerUserMfaScan, manualAnswers: s.manualAnswers }));
   } catch { /* ignore */ }
 }
 
 const saved = load();
 
-const INTUNE_AREAS = new Set(["Intune"]);
+/** Areas per preset: Intune covers the service settings and the Windows device settings. */
+function inPreset(preset: ChecksPreset, area: string): boolean {
+  const windows = isWindowsArea(area);
+  if (preset === "all") return true;
+  if (preset === "windows") return windows;
+  if (preset === "intune") return windows || area === "Intune";
+  return !windows && area !== "Intune";
+}
+
+function validScope(v: unknown): DeviceScopePref {
+  const s = v as Partial<{ kind: string; id: string; name: string }> | undefined;
+  return s?.kind === "profile" && typeof s.id === "string" && typeof s.name === "string"
+    ? { kind: "profile", id: s.id, name: s.name }
+    : { kind: "tenant" };
+}
 
 export const useBenchmarkPrefs = create<BenchmarkPrefsState>((set, get) => ({
   excludedChecks: Array.isArray(saved.excludedChecks) ? saved.excludedChecks.filter((x) => typeof x === "string") : [],
@@ -57,8 +74,12 @@ export const useBenchmarkPrefs = create<BenchmarkPrefsState>((set, get) => ({
     save(get());
   },
   applyPreset: (preset) => {
-    const keep = (area: string) => preset === "all" || (preset === "intune" ? INTUNE_AREAS.has(area) : !INTUNE_AREAS.has(area));
-    set({ excludedChecks: CHECKS.filter((c) => !keep(c.area)).map((c) => c.id) });
+    set({ excludedChecks: CHECKS.filter((c) => !inPreset(preset, c.area)).map((c) => c.id) });
+    save(get());
+  },
+  deviceScope: validScope(saved.deviceScope),
+  setDeviceScope: (scope) => {
+    set({ deviceScope: scope });
     save(get());
   },
   breakGlass: Array.isArray(saved.breakGlass) ? saved.breakGlass : [],
