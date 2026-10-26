@@ -318,7 +318,7 @@ export default function AgentPlacePage() {
     <div className={styles.root}>
       <PageHeader
         eyebrow="IntuneShade baseline"
-        title="Place for your agents"
+        title="Security Baseline checker"
         subtitle="Four agents benchmark your tenant against the CIS Microsoft 365 L1 tenant checks and the CIS Windows 11 L1 settings Intune assigns (tenant-wide or per Autopilot deployment profile), with a NIS2 view. Collection and scoring are read-only and deterministic; AI only explains and summarises."
         icon={<Bot24Regular />}
       />

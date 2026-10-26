@@ -17,11 +17,19 @@ const GUEST_LIMITED = "10dae51f-b6af-4016-8d66-8c2a99b929b3";
 const GUEST_RESTRICTED = "2af84b1e-32c8-42b7-82bc-daa82404023b";
 
 /** Single property compared to an expected value. */
-function equals(path: string, source: string, want: unknown, opts: { beta?: boolean } = {}): Check {
+function equals(path: string, source: string, want: unknown, opts: { beta?: boolean; role?: string } = {}): Check {
   return async (ctx, id, expected) => {
     const r = await ctx.get<unknown>(source);
+    // Some endpoints accept no Graph scope at all, only a directory role: a 403 then
+    // says nothing about the setting, so hand it back to the admin instead of erroring.
+    if (!r.ok && r.status === 403 && opts.role) {
+      return result(id, expected, "Manual", "unknown", `Only a ${opts.role} can read this setting through Graph. Verify it in the portal, or rerun signed in with that role.`,
+        [{ source, path: "", value: "HTTP 403" }]);
+    }
     if (!r.ok) return fetchFailure(id, expected, r, opts.beta);
-    const value = prop(single(r.data), path);
+    const raw = prop(single(r.data), path);
+    // Beta sometimes serialises booleans as strings ("false").
+    const value = raw === "true" ? true : raw === "false" ? false : raw;
     return result(id, expected, value === want ? "Pass" : "Fail", JSON.stringify(value),
       value === want ? `${path} is ${JSON.stringify(want)}.` : `${path} is ${JSON.stringify(value)}, expected ${JSON.stringify(want)}.`,
       [{ source, path, value }]);
@@ -143,7 +151,7 @@ const passwordHashSync: Check = async (ctx, id, expected) => {
 export const DIRECTORY_CHECKS: Record<string, Check> = {
   "5.1.2.2": equals("defaultUserRolePermissions.allowedToCreateApps", AUTHZ, false),
   "5.1.2.3": equals("defaultUserRolePermissions.allowedToCreateTenants", AUTHZ, false),
-  "5.1.2.4": equals("restrictNonAdminAccess", "/beta/admin/entra/uxSetting", true, { beta: true }),
+  "5.1.2.4": equals("restrictNonAdminAccess", "/beta/admin/entra/uxSetting", true, { beta: true, role: "Global Administrator" }),
   "5.1.3.1": equals("defaultUserRolePermissions.allowedToCreateSecurityGroups", AUTHZ, false),
   "5.1.4.2": deviceQuota,
   "5.1.4.3": equals("azureADJoin.localAdmins.enableGlobalAdmins", DEVICE_REG, false, { beta: true }),

@@ -231,6 +231,14 @@ describe("directory settings", () => {
     const r = await run("5.1.2.4", { "/beta/admin/entra/uxSetting": { status: 404 } });
     expect(r.state).toBe("Manual");
   });
+
+  it("Global Administrator-only endpoints turn a 403 into Manual and read string booleans", async () => {
+    const denied = await run("5.1.2.4", { "/beta/admin/entra/uxSetting": { status: 403 } });
+    expect(denied.state).toBe("Manual");
+    expect(denied.message).toMatch(/Global Administrator/);
+    expect((await run("5.1.2.4", { "/beta/admin/entra/uxSetting": { restrictNonAdminAccess: "true" } })).state).toBe("Pass");
+    expect((await run("5.1.2.4", { "/beta/admin/entra/uxSetting": { restrictNonAdminAccess: "false" } })).state).toBe("Fail");
+  });
 });
 
 // ─── Engine + scoring ─────────────────────────────────────────────────────────
