@@ -1,12 +1,19 @@
 import { create } from "zustand";
 import type { BreakGlassAccount, ManualAnswer } from "../baseline/types";
+import { CHECKS } from "../baseline";
 
 /**
- * User input for the CIS benchmark: break-glass accounts, scan options and
- * answers to manual checks. Kept in this browser only (localStorage); nothing
+ * User input for the CIS benchmark: which checks to run, break-glass accounts,
+ * scan options and answers to manual checks. Kept in this browser only (localStorage); nothing
  * is sent anywhere.
  */
+export type ChecksPreset = "all" | "entra" | "intune";
+
 interface BenchmarkPrefsState {
+  /** Check ids the admin switched off. Stored as exclusions so new checks are on by default. */
+  excludedChecks: string[];
+  setChecks: (ids: string[], on: boolean) => void;
+  applyPreset: (preset: ChecksPreset) => void;
   breakGlass: BreakGlassAccount[];
   fullPerUserMfaScan: boolean;
   manualAnswers: Record<string, ManualAnswer>;
@@ -18,7 +25,7 @@ interface BenchmarkPrefsState {
 
 const KEY = "intuneshade.benchmarkPrefs";
 
-type Persisted = Pick<BenchmarkPrefsState, "breakGlass" | "fullPerUserMfaScan" | "manualAnswers">;
+type Persisted = Pick<BenchmarkPrefsState, "excludedChecks" | "breakGlass" | "fullPerUserMfaScan" | "manualAnswers">;
 
 function load(): Partial<Persisted> {
   try {
@@ -31,13 +38,29 @@ function load(): Partial<Persisted> {
 
 function save(s: Persisted) {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ breakGlass: s.breakGlass, fullPerUserMfaScan: s.fullPerUserMfaScan, manualAnswers: s.manualAnswers }));
+    localStorage.setItem(KEY, JSON.stringify({ excludedChecks: s.excludedChecks, breakGlass: s.breakGlass, fullPerUserMfaScan: s.fullPerUserMfaScan, manualAnswers: s.manualAnswers }));
   } catch { /* ignore */ }
 }
 
 const saved = load();
 
+const INTUNE_AREAS = new Set(["Intune"]);
+
 export const useBenchmarkPrefs = create<BenchmarkPrefsState>((set, get) => ({
+  excludedChecks: Array.isArray(saved.excludedChecks) ? saved.excludedChecks.filter((x) => typeof x === "string") : [],
+  setChecks: (ids, on) => {
+    set((s) => {
+      const next = new Set(s.excludedChecks);
+      for (const id of ids) if (on) next.delete(id); else next.add(id);
+      return { excludedChecks: [...next] };
+    });
+    save(get());
+  },
+  applyPreset: (preset) => {
+    const keep = (area: string) => preset === "all" || (preset === "intune" ? INTUNE_AREAS.has(area) : !INTUNE_AREAS.has(area));
+    set({ excludedChecks: CHECKS.filter((c) => !keep(c.area)).map((c) => c.id) });
+    save(get());
+  },
   breakGlass: Array.isArray(saved.breakGlass) ? saved.breakGlass : [],
   fullPerUserMfaScan: saved.fullPerUserMfaScan === true,
   manualAnswers: saved.manualAnswers && typeof saved.manualAnswers === "object" ? saved.manualAnswers : {},

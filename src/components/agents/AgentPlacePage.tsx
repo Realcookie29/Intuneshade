@@ -17,6 +17,7 @@ import {
 import {
   Bot24Regular,
   ClipboardTaskListLtr24Regular,
+  TaskListLtrRegular,
   DatabaseSearch24Regular,
   DocumentData24Regular,
   Lightbulb24Regular,
@@ -30,6 +31,7 @@ import ModelSettingsPanel from "./ModelSettingsPanel";
 import BenchmarkResults from "./BenchmarkResults";
 import AgentOffice from "./AgentOffice";
 import RunOptionsPanel from "./RunOptionsPanel";
+import CheckSelectionPanel from "./CheckSelectionPanel";
 import { ACCENTS, FONTS } from "../../theme/theme";
 import { CHECKS } from "../../baseline";
 import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
@@ -297,6 +299,7 @@ export default function AgentPlacePage() {
   const results = useAgentRunStore((s) => s.results);
   const coManaged = useAgentRunStore((s) => s.coManaged);
   const breakGlassCount = useBenchmarkPrefs((s) => s.breakGlass.length);
+  const excludedCount = useBenchmarkPrefs((s) => s.excludedChecks.filter((id) => CHECKS.some((c) => c.id === id)).length);
   const advice = useAgentRunStore((s) => s.advice);
   const error = useAgentRunStore((s) => s.error);
   // Subscribe so badges re-render when the model or key changes.
@@ -321,7 +324,14 @@ export default function AgentPlacePage() {
       />
       <div className={styles.scroll}>
         <div className={styles.controls}>
-          <Badge appearance="tint" color="brand">CIS L1 · {CHECKS.length} tenant checks</Badge>
+          <Popover positioning="below-start" withArrow>
+            <PopoverTrigger disableButtonEnhancement>
+              <Button icon={<TaskListLtrRegular />} disabled={running}>
+                CIS L1 checks: {CHECKS.length - excludedCount}/{CHECKS.length}
+              </Button>
+            </PopoverTrigger>
+            <PopoverSurface><CheckSelectionPanel /></PopoverSurface>
+          </Popover>
           <Popover positioning="below-start" withArrow>
             <PopoverTrigger disableButtonEnhancement>
               <Button icon={<OptionsRegular />} disabled={running}>
@@ -373,8 +383,8 @@ export default function AgentPlacePage() {
             <BenchmarkResults report={report} results={results} advice={advice} coManaged={coManaged} />
           ) : (
             <Text className={styles.empty}>
-              Results appear here when the Reporter is done. The first run asks you to consent to extra read-only
-              permissions (policies, roles, PIM settings, sign-in registration, access reviews). Because IntuneShade is a
+              Results appear here when the Reporter is done. The first run asks you to consent to the extra read-only
+              permissions the selected checks need (see CIS L1 checks). Because IntuneShade is a
               multi-tenant app, some of these need a Global Administrator or Privileged Role Administrator to grant admin
               consent once for your organisation. Tag your break-glass accounts under Run options first, so their
               Conditional Access exclusions are recognised.

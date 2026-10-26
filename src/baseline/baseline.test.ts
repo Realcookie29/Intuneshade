@@ -9,7 +9,10 @@ import { CA_POLICIES, evaluateCa, grantMfa, type CaPolicy } from "./checks/ca";
 import { GROUP_SETTINGS } from "./checks/authMethods";
 import { ROLE_GLOBAL_ADMIN } from "./checks/roles";
 import type { CheckResult } from "./types";
-import { scoreResults, toCsv } from "../services/agents/reporter";
+import { coverageOf, scoreResults, toCsv } from "../services/agents/reporter";
+import { CHECK_SCOPES, extraScopesFor } from "./scopes";
+import { sharedSourcesFor } from "./index";
+import { useBenchmarkPrefs } from "../store/benchmarkPrefsStore";
 import { maskFacts } from "../services/ai/mask";
 
 // ─── Fixture reader ───────────────────────────────────────────────────────────
@@ -274,5 +277,47 @@ describe("exports and masking", () => {
       `Enforced by "[name]"`,
       "owner [user]",
     ]);
+  });
+});
+
+// ─── Check selection ──────────────────────────────────────────────────────────
+
+describe("check selection", () => {
+  it("declares the Graph scopes of every check", () => {
+    for (const c of CHECKS) expect(CHECK_SCOPES[c.id], c.id).toBeDefined();
+    expect(Object.keys(CHECK_SCOPES).sort()).toEqual(CHECKS.map((c) => c.id).sort());
+  });
+
+  it("requests only the scopes the selected checks need", () => {
+    expect(extraScopesFor(["4.1", "4.2"])).toEqual([]);
+    expect(extraScopesFor(["5.2.2.2", "5.3.4"])).toEqual(["Policy.Read.All", "RoleManagementPolicy.Read.Directory"]);
+  });
+
+  it("prefetches only shared sources that are relevant and permitted", () => {
+    const intune = CHECKS.filter((c) => c.area === "Intune");
+    expect(sharedSourcesFor(intune, []).map((s) => s.label)).toEqual(["Enrollment restrictions"]);
+    const ca = CHECKS.filter((c) => c.area === "Conditional Access");
+    expect(sharedSourcesFor(ca, ["Policy.Read.All"]).map((s) => s.label)).toContain("Conditional Access policies");
+    expect(sharedSourcesFor(ca, ["Policy.Read.All"]).map((s) => s.label)).not.toContain("Role assignments");
+  });
+
+  it("presets select whole areas", () => {
+    const { applyPreset } = useBenchmarkPrefs.getState();
+    applyPreset("intune");
+    const excluded = new Set(useBenchmarkPrefs.getState().excludedChecks);
+    expect(CHECKS.filter((c) => !excluded.has(c.id)).every((c) => c.area === "Intune")).toBe(true);
+    applyPreset("entra");
+    const excluded2 = new Set(useBenchmarkPrefs.getState().excludedChecks);
+    expect(CHECKS.filter((c) => !excluded2.has(c.id)).some((c) => c.area === "Intune")).toBe(false);
+    applyPreset("all");
+    expect(useBenchmarkPrefs.getState().excludedChecks).toEqual([]);
+  });
+
+  it("reports coverage for a partial run", () => {
+    const base = { actual: "", expected: "", evidence: [], message: "" };
+    const cov = coverageOf([{ ...base, id: "4.1", state: "Pass" }, { ...base, id: "4.2", state: "Fail" }]);
+    expect(cov).toMatchObject({ assessed: 2, total: 52 });
+    expect(cov.areasNotAssessed).toContain("Conditional Access");
+    expect(cov.areasNotAssessed).not.toContain("Intune");
   });
 });

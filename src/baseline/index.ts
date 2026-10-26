@@ -31,20 +31,30 @@ export const EVALUATORS: Record<string, Evaluator> = {
 /**
  * Endpoints many checks share. The Collector reads these up front (warming the
  * per-run cache) so the activity feed shows the data gathering as its own step.
+ * A source is only read when a selected check's area uses it and its extra
+ * scope (if any) was requested for this run.
  */
-export const SHARED_SOURCES: Array<{ label: string; path: string; all?: boolean }> = [
-  { label: "Conditional Access policies", path: CA_POLICIES, all: true },
-  { label: "Role assignments", path: ASSIGNMENTS, all: true },
-  { label: "Eligible role assignments", path: ELIGIBILITY, all: true },
-  { label: "Authorization policy", path: AUTHZ },
-  { label: "Authentication methods policy", path: AUTH_METHODS },
-  { label: "Device registration policy", path: DEVICE_REG },
-  { label: "Directory settings", path: GROUP_SETTINGS, all: true },
-  { label: "Organization", path: ORGANIZATION, all: true },
-  { label: "Licences", path: SUBSCRIBED_SKUS, all: true },
-  { label: "Enrollment restrictions", path: ENROLLMENT_CONFIGS, all: true },
-  { label: "Access reviews", path: ACCESS_REVIEWS, all: true },
+export interface SharedSource { label: string; path: string; all?: boolean; areas: string[]; scope?: string }
+
+export const SHARED_SOURCES: SharedSource[] = [
+  { label: "Conditional Access policies", path: CA_POLICIES, all: true, areas: ["Conditional Access", "Admin accounts"], scope: "Policy.Read.All" },
+  { label: "Role assignments", path: ASSIGNMENTS, all: true, areas: ["Admin accounts", "Conditional Access", "Entra users"], scope: "RoleManagement.Read.Directory" },
+  { label: "Eligible role assignments", path: ELIGIBILITY, all: true, areas: ["Admin accounts", "Conditional Access", "Entra users"], scope: "RoleManagement.Read.Directory" },
+  { label: "Authorization policy", path: AUTHZ, areas: ["Entra users", "Entra groups", "External identities"], scope: "Policy.Read.All" },
+  { label: "Authentication methods policy", path: AUTH_METHODS, areas: ["Auth methods"], scope: "Policy.Read.All" },
+  { label: "Device registration policy", path: DEVICE_REG, areas: ["Entra devices"], scope: "Policy.Read.All" },
+  { label: "Directory settings", path: GROUP_SETTINGS, all: true, areas: ["Auth methods"] },
+  { label: "Organization", path: ORGANIZATION, all: true, areas: ["Hybrid", "Auth methods", "Admin accounts"] },
+  { label: "Licences", path: SUBSCRIBED_SKUS, all: true, areas: ["Conditional Access", "Admin accounts"] },
+  { label: "Enrollment restrictions", path: ENROLLMENT_CONFIGS, all: true, areas: ["Intune"] },
+  { label: "Access reviews", path: ACCESS_REVIEWS, all: true, areas: ["ID Governance"], scope: "AccessReview.Read.All" },
 ];
+
+/** Shared sources worth prefetching for a run over `checks` with `extraScopes` granted. */
+export function sharedSourcesFor(checks: TenantCheck[], extraScopes: string[]): SharedSource[] {
+  const areas = new Set(checks.map((c) => c.area));
+  return SHARED_SOURCES.filter((s) => s.areas.some((a) => areas.has(a)) && (!s.scope || extraScopes.includes(s.scope)));
+}
 
 /** Technical CIS area → NIS2 art. 21(2) measures it supports. */
 const AREA_NIS2: Record<string, Nis2Measure[]> = {

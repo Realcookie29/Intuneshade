@@ -31,5 +31,6 @@ Return this exact JSON structure:
   "executiveSummary": "4-6 sentences for a non-technical audience: overall posture, the biggest risks, and what to do first",
   "keyRisks": ["short risk statement 1", "short risk statement 2", "up to 5"]
 }
+If coverage.assessed is lower than coverage.total, say clearly that only part of the benchmark was assessed and name the areas not assessed.
 Never state or imply that the tenant is "NIS2 compliant" or "CIS compliant". This is a technical readiness check; NIS2 also requires organisational measures a tenant scan cannot verify.
 Return ONLY valid JSON.`;

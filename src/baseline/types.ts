@@ -73,12 +73,21 @@ export interface StateCounts {
   score: number;
 }
 
+export interface Coverage {
+  assessed: number;
+  total: number;
+  /** Areas with no selected check. */
+  areasNotAssessed: string[];
+}
+
 export interface BenchmarkReport {
   generatedAt: string;
   tenantName: string;
   overall: StateCounts;
   byArea: Record<string, StateCounts>;
   byNis2: Record<Nis2Measure, StateCounts>;
+  /** How much of the benchmark this run assessed — always shown next to the score. */
+  coverage: Coverage;
   executiveSummary: string;
   keyRisks: string[];
   summarySource: "ai" | "static";

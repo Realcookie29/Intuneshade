@@ -48,18 +48,5 @@ export const WRITE_SCOPES = [
   "GroupMember.ReadWrite.All",
 ];
 
-/**
- * Extra read-only scopes for the CIS L1 benchmark. Requested on demand
- * (incremental consent) when a benchmark starts — not at sign-in — so users who
- * never run a benchmark are never asked for them.
- */
-export const BASELINE_SCOPES = [
-  ...loginRequest.scopes,
-  "Policy.Read.All",                         // CA, authorization, auth methods, device registration, app management policies
-  "RoleManagement.Read.Directory",           // role definitions, assignments, eligibility
-  "RoleManagementPolicy.Read.Directory",     // PIM approval settings
-  "AuditLog.Read.All",                       // userRegistrationDetails (MFA capable)
-  "UserAuthenticationMethod.Read.All",       // userRegistrationDetails, per-user MFA state
-  "AccessReview.Read.All",                   // access review definitions
-  "OnPremDirectorySynchronization.Read.All", // password hash sync
-];
+// Extra read-only scopes for the CIS L1 benchmark are defined per check in
+// src/baseline/scopes.ts and requested only for the checks a run includes.

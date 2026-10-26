@@ -26,7 +26,7 @@ import { NIS2_MANUAL_CHECKS, NIS2_MEASURES, checkById, effectiveState } from "..
 import type { Advice, BenchmarkReport, CheckResult, CheckState, ManualAnswer, Nis2Measure, Severity, StateCounts } from "../../baseline/types";
 import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
 import {
-  AREAS, STATE_COLOR, STATE_LABEL, renderReportHtml, resultsCsv, resultsJson, scoreResults, toCsv,
+  AREAS, STATE_COLOR, STATE_LABEL, coverageLabel, renderReportHtml, resultsCsv, resultsJson, scoreResults, toCsv,
 } from "../../services/agents/reporter";
 
 const STATES: CheckState[] = ["Pass", "Partial", "Fail", "Manual", "NotApplicable", "Error"];
@@ -319,7 +319,7 @@ export default function BenchmarkResults({ report, results, advice, coManaged }:
   return (
     <div className={styles.root}>
       <div className={styles.kpis}>
-        {kpi("CIS L1 score", `${o.score}%`, "all", o.score >= 80 ? ACCENTS.mint : o.score >= 50 ? ACCENTS.amber : ACCENTS.danger)}
+        {kpi(`score · ${report.coverage.assessed}/${report.coverage.total} checks`, `${o.score}%`, "all", o.score >= 80 ? ACCENTS.mint : o.score >= 50 ? ACCENTS.amber : ACCENTS.danger)}
         {STATES.map((s) => kpi(STATE_LABEL[s], o[s], s, o[s] ? STATE_COLOR[s] : undefined))}
         <div style={{ flex: 1 }} />
         <Menu>
@@ -335,7 +335,14 @@ export default function BenchmarkResults({ report, results, advice, coManaged }:
           </MenuPopover>
         </Menu>
       </div>
-      <Text className={styles.disclaimer}>Score = Pass / (Pass + Partial + Fail). Manual, N/A and Error are not scored; answering a manual check counts it.</Text>
+      <Text className={styles.disclaimer}>Score = Pass / (Pass + Partial + Fail) over {coverageLabel(report.coverage)}. Manual, N/A and Error are not scored; answering a manual check counts it.</Text>
+      {report.coverage.assessed < report.coverage.total && (
+        <div className={styles.banner}>
+          Partial scan: {report.coverage.total - report.coverage.assessed} of {report.coverage.total} checks were not selected
+          {report.coverage.areasNotAssessed.length ? ` (not assessed: ${report.coverage.areasNotAssessed.join(", ")})` : ""}.
+          This score does not cover the whole CIS L1 benchmark.
+        </div>
+      )}
 
       <div className={styles.summary}>
         <Text>{report.executiveSummary}</Text>
@@ -410,6 +417,15 @@ export default function BenchmarkResults({ report, results, advice, coManaged }:
           {AREAS.map((a) => {
             const s = scores.byArea[a];
             const scored = s.Pass + s.Partial + s.Fail;
+            if (report.coverage.areasNotAssessed.includes(a)) {
+              return (
+                <div key={a} className={styles.scoreRow}>
+                  <Text>{a}</Text>
+                  <Text className={styles.sub}>Not assessed in this run</Text>
+                  <Text className={styles.sub}>—</Text>
+                </div>
+              );
+            }
             return (
               <div key={a} className={styles.scoreRow}>
                 <Button appearance="transparent" size="small" style={{ justifyContent: "flex-start" }}

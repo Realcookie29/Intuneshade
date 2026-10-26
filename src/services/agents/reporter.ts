@@ -6,7 +6,7 @@ import {
   BASELINE_NAME, BASELINE_SOURCE, CHECKS, NIS2_MANUAL_CHECKS, NIS2_MEASURES,
   checkById, countStates, effectiveState, nis2For,
 } from "../../baseline";
-import type { Advice, BenchmarkReport, CheckResult, CheckState, ManualAnswer, Nis2Measure, StateCounts } from "../../baseline/types";
+import type { Advice, BenchmarkReport, CheckResult, CheckState, Coverage, ManualAnswer, Nis2Measure, StateCounts } from "../../baseline/types";
 import { runAgentPrompt } from "../ai/provider";
 import { maskFacts } from "../ai/mask";
 import { toCsv } from "../../utils/csv";
@@ -18,6 +18,20 @@ export { toCsv };
 export const AREAS: string[] = [...new Set(CHECKS.map((c) => c.area))];
 
 type Scores = Pick<BenchmarkReport, "overall" | "byArea" | "byNis2">;
+
+export function coverageOf(results: CheckResult[]): Coverage {
+  const assessedAreas = new Set(results.map((r) => checkById(r.id)?.area));
+  return {
+    assessed: results.length,
+    total: CHECKS.length,
+    areasNotAssessed: AREAS.filter((a) => !assessedAreas.has(a)),
+  };
+}
+
+/** "18 of 52 CIS L1 tenant checks" — or "all 52" for a full run. */
+export function coverageLabel(c: Coverage): string {
+  return c.assessed >= c.total ? `all ${c.total} CIS L1 tenant checks` : `${c.assessed} of ${c.total} CIS L1 tenant checks`;
+}
 
 /** Scores over effective states (manual answers included). Pure — the UI recomputes it live. */
 export function scoreResults(results: CheckResult[], answers: Record<string, ManualAnswer>): Scores {
@@ -32,7 +46,7 @@ export function scoreResults(results: CheckResult[], answers: Record<string, Man
   };
 }
 
-function staticSummary(s: Scores, results: CheckResult[], answers: Record<string, ManualAnswer>) {
+function staticSummary(s: Scores, results: CheckResult[], answers: Record<string, ManualAnswer>, coverage: Coverage) {
   const failing = results.filter((r) => effectiveState(r, answers) === "Fail");
   const highFail = failing.filter((r) => checkById(r.id)?.severity === "High");
   const weakest = AREAS
@@ -40,7 +54,8 @@ function staticSummary(s: Scores, results: CheckResult[], answers: Record<string
     .sort((a, b) => s.byArea[a].score - s.byArea[b].score)[0];
   const o = s.overall;
   const parts = [
-    `The tenant scores ${o.score}% on the CIS L1 tenant checks: ${o.Pass} pass, ${o.Partial} partially pass and ${o.Fail} fail.`,
+    `The tenant scores ${o.score}% on ${coverageLabel(coverage)}: ${o.Pass} pass, ${o.Partial} partially pass and ${o.Fail} fail.`,
+    coverage.areasNotAssessed.length ? `Not assessed in this run: ${coverage.areasNotAssessed.join(", ")}.` : "",
     highFail.length
       ? `${highFail.length} high-severity check${highFail.length === 1 ? "" : "s"} fail and should be fixed first.`
       : "No high-severity checks fail.",
@@ -70,8 +85,9 @@ export async function buildReport(
   hooks: ReporterHooks,
 ): Promise<BenchmarkReport> {
   const scores = scoreResults(results, answers);
-  const base = { generatedAt: new Date().toISOString(), tenantName, ...scores };
-  const fallback = staticSummary(scores, results, answers);
+  const coverage = coverageOf(results);
+  const base = { generatedAt: new Date().toISOString(), tenantName, ...scores, coverage };
+  const fallback = staticSummary(scores, results, answers, coverage);
 
   if (hooks.useAi) {
     try {
@@ -86,6 +102,7 @@ export async function buildReport(
         }));
       const res = (await runAgentPrompt("report", {
         benchmark: "CIS Microsoft 365 L1 — tenant checks",
+        coverage,
         overall: scores.overall,
         byArea: Object.fromEntries(Object.entries(scores.byArea).map(([a, s]) => [a, s.score])),
         nis2: Object.fromEntries(Object.entries(scores.byNis2).map(([m, s]) => [`${m}: ${NIS2_MEASURES[m as Nis2Measure]}`, s.score])),
@@ -164,8 +181,10 @@ export function renderReportHtml(report: BenchmarkReport, results: CheckResult[]
     </tr>`;
   }).join("");
 
+  const notAssessed = new Set(report.coverage.areasNotAssessed);
   const areaRows = AREAS.map((a) => {
     const s = report.byArea[a];
+    if (notAssessed.has(a)) return `<tr><td>${esc(a)}</td><td colspan="5" class="muted">not assessed in this run</td></tr>`;
     return `<tr><td>${esc(a)}</td><td>${s.Pass + s.Fail + s.Partial ? `${s.score}%` : "—"}</td><td>${s.Pass}</td><td>${s.Partial}</td><td>${s.Fail}</td><td>${s.Manual + s.Error}</td></tr>`;
   }).join("");
 
@@ -194,9 +213,9 @@ pre{background:#f5f5f7;padding:10px;overflow:auto;font-size:12px;white-space:pre
 @media print{details{display:block}details>summary{display:none}}
 </style></head><body>
 <h1>IntuneShade baseline — ${esc(report.tenantName || "tenant")}</h1>
-<div class="muted">CIS Microsoft 365 L1 tenant checks · generated ${esc(new Date(report.generatedAt).toLocaleString())} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
+<div class="muted">Scope: ${esc(coverageLabel(report.coverage))} · generated ${esc(new Date(report.generatedAt).toLocaleString())} · summary: ${report.summarySource === "ai" ? "AI-generated" : "rule-based"}</div>
 <div class="kpis">
-<div class="kpi"><b>${o.score}%</b>score</div>
+<div class="kpi"><b>${o.score}%</b>score on ${report.coverage.assessed}/${report.coverage.total} checks</div>
 <div class="kpi"><b>${o.Pass}</b>pass</div>
 <div class="kpi"><b>${o.Partial}</b>partial</div>
 <div class="kpi"><b>${o.Fail}</b>fail</div>
@@ -204,7 +223,7 @@ pre{background:#f5f5f7;padding:10px;overflow:auto;font-size:12px;white-space:pre
 <div class="kpi"><b>${o.NotApplicable}</b>not applicable</div>
 <div class="kpi"><b>${o.Error}</b>not readable</div>
 </div>
-<p class="small">Score = Pass / (Pass + Partial + Fail). Manual, not applicable and unreadable checks are not scored.</p>
+<p class="small">Score = Pass / (Pass + Partial + Fail) over the checks assessed in this run. Manual, not applicable and unreadable checks are not scored.${report.coverage.assessed < report.coverage.total ? ` <strong>Partial scan:</strong> ${report.coverage.total - report.coverage.assessed} checks were not selected${report.coverage.areasNotAssessed.length ? ` (areas not assessed: ${esc(report.coverage.areasNotAssessed.join(", "))})` : ""}, so this score does not cover the whole benchmark.` : ""}</p>
 <h2>Executive summary</h2><p>${esc(report.executiveSummary)}</p>
 ${report.keyRisks.length ? `<ul>${report.keyRisks.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
 <h2>By area</h2>

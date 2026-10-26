@@ -2,13 +2,14 @@
 // Runs the four agents as a pipeline — Collector → Assessor → Advisor → Reporter —
 // and narrates every step into agentRunStore for the "Place for your agents" page.
 
-import { CHECKS, countStates, runCheck } from "../../baseline";
+import { CHECKS, countStates, runCheck, sharedSourcesFor } from "../../baseline";
+import { extraScopesFor } from "../../baseline/scopes";
 import type { CheckResult } from "../../baseline/types";
 import { useAgentRunStore, type AgentId } from "../../store/agentRunStore";
 import { useAgentModelStore } from "../../store/agentModelStore";
 import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
 import { ensureScopes, getTenantName } from "../graphClient";
-import { BASELINE_SCOPES } from "../../auth/msalConfig";
+import { loginRequest } from "../../auth/msalConfig";
 import { currentModel } from "../ai/provider";
 import { isCoManaged } from "../../baseline/checks/intune";
 import { collectShared, createGraphContext } from "./collector";
@@ -32,7 +33,11 @@ export async function runBenchmark(): Promise<void> {
   const { updateAgent, addLog, handOff, setResults } = useAgentRunStore.getState();
   const model = currentModel();
   const { maskNames } = useAgentModelStore.getState();
-  const { breakGlass, fullPerUserMfaScan, manualAnswers } = useBenchmarkPrefs.getState();
+  const { breakGlass, fullPerUserMfaScan, manualAnswers, excludedChecks } = useBenchmarkPrefs.getState();
+  const excluded = new Set(excludedChecks);
+  const checks = CHECKS.filter((c) => !excluded.has(c.id));
+  const extraScopes = extraScopesFor(checks.map((c) => c.id));
+  const scopes = [...loginRequest.scopes, ...extraScopes];
   const useAi = model.engine !== "static";
   const mask = model.leavesDevice && maskNames;
   let current: AgentId = "collector";
@@ -40,15 +45,18 @@ export async function runBenchmark(): Promise<void> {
   try {
     // ── Collector ──────────────────────────────────────────────────────────────
     updateAgent("collector", { status: "working", task: "Requesting read access", progress: 0 });
-    addLog("collector", "info", "Checking read permissions…");
-    if ((await ensureScopes(BASELINE_SCOPES, "agents")) === "redirecting") {
+    if (!checks.length) throw new Error("No checks selected — choose at least one under Checks.");
+    addLog("collector", "info", extraScopes.length
+      ? `Checking read permissions for ${checks.length} selected checks: ${extraScopes.join(", ")}`
+      : `Checking read permissions — the ${checks.length} selected checks need no extra permissions.`);
+    if ((await ensureScopes(scopes, "agents")) === "redirecting") {
       addLog("collector", "info", "Redirecting to Microsoft to consent to read-only permissions…");
       useAgentRunStore.getState().finish();
       return;
     }
     addLog("collector", "info", "Starting read-only collection. Only GET requests — no changes are made to the tenant.");
-    const ctx = createGraphContext({ breakGlass, fullPerUserMfaScan }, (path) => addLog(current, "graph", `GET ${path}`));
-    const okCount = await collectShared(ctx, {
+    const ctx = createGraphContext({ breakGlass, fullPerUserMfaScan }, scopes, (path) => addLog(current, "graph", `GET ${path}`));
+    const okCount = await collectShared(ctx, sharedSourcesFor(checks, extraScopes), {
       signal,
       onRequest: () => {},
       onSource: (i, total, label) => updateAgent("collector", { task: `Reading ${label}`, progress: i / total }),
@@ -60,12 +68,12 @@ export async function runBenchmark(): Promise<void> {
     // ── Assessor ───────────────────────────────────────────────────────────────
     current = "assessor";
     updateAgent("assessor", { status: "working", task: "Loading CIS L1 checks", progress: 0 });
-    addLog("assessor", "info", `Evaluating ${CHECKS.length} CIS L1 tenant checks — deterministic rules, no AI.`);
-    if (!breakGlass.length) addLog("assessor", "warn", "No break-glass accounts set — CA exclusions cannot be told apart from emergency access (see Run options).");
+    addLog("assessor", "info", `Evaluating ${checks.length} of ${CHECKS.length} CIS L1 tenant checks — deterministic rules, no AI.`);
+    if (!breakGlass.length && checks.some((c) => c.area === "Conditional Access")) addLog("assessor", "warn", "No break-glass accounts set — CA exclusions cannot be told apart from emergency access (see Run options).");
     const results: CheckResult[] = [];
-    for (const [i, check] of CHECKS.entries()) {
+    for (const [i, check] of checks.entries()) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      updateAgent("assessor", { task: `${check.id} · ${check.title}`, progress: i / CHECKS.length });
+      updateAgent("assessor", { task: `${check.id} · ${check.title}`, progress: i / checks.length });
       const r = await runCheck(check, ctx);
       results.push(r);
       addLog("assessor", r.state === "Fail" ? "warn" : r.state === "Error" ? "error" : "info", `${check.id} ${r.state.toUpperCase()} — ${r.message}`);

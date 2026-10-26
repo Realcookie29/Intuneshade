@@ -4,9 +4,8 @@
 // Read-only: only GET requests are ever made.
 
 import { graphGet, graphGetAll } from "../graphClient";
-import { BASELINE_SCOPES } from "../../auth/msalConfig";
 import { createContext, type CheckContext, type CheckOptions } from "../../baseline/context";
-import { SHARED_SOURCES } from "../../baseline";
+import type { SharedSource } from "../../baseline";
 
 export interface CollectorHooks {
   onRequest: (path: string) => void;
@@ -15,11 +14,12 @@ export interface CollectorHooks {
   signal?: AbortSignal;
 }
 
-export function createGraphContext(options: CheckOptions, onRequest: (path: string) => void): CheckContext {
+/** `scopes` = sign-in scopes plus the extra scopes of the selected checks. */
+export function createGraphContext(options: CheckOptions, scopes: string[], onRequest: (path: string) => void): CheckContext {
   return createContext(
     {
-      get: (path) => graphGet(path, BASELINE_SCOPES),
-      getAll: (path) => graphGetAll(path, BASELINE_SCOPES),
+      get: (path) => graphGet(path, scopes),
+      getAll: (path) => graphGetAll(path, scopes),
     },
     options,
     { onRequest },
@@ -27,11 +27,11 @@ export function createGraphContext(options: CheckOptions, onRequest: (path: stri
 }
 
 /** Warms the context cache with the shared sources and reports each one. Returns how many were readable. */
-export async function collectShared(ctx: CheckContext, hooks: CollectorHooks): Promise<number> {
+export async function collectShared(ctx: CheckContext, sources: SharedSource[], hooks: CollectorHooks): Promise<number> {
   let ok = 0;
-  for (const [i, src] of SHARED_SOURCES.entries()) {
+  for (const [i, src] of sources.entries()) {
     if (hooks.signal?.aborted) throw new DOMException("Cancelled", "AbortError");
-    hooks.onSource(i, SHARED_SOURCES.length, src.label);
+    hooks.onSource(i, sources.length, src.label);
     const r = src.all ? await ctx.getAll<unknown>(src.path) : await ctx.get<unknown>(src.path);
     if (r.ok) {
       ok++;
