@@ -22,6 +22,7 @@ import {
   DocumentData24Regular,
   Lightbulb24Regular,
   OptionsRegular,
+  ShieldKeyholeRegular,
   PlayRegular,
   SettingsRegular,
   StopRegular,
@@ -32,6 +33,7 @@ import BenchmarkResults from "./BenchmarkResults";
 import AgentOffice from "./AgentOffice";
 import RunOptionsPanel from "./RunOptionsPanel";
 import CheckSelectionPanel from "./CheckSelectionPanel";
+import PrerequisitesPanel from "./PrerequisitesPanel";
 import { ACCENTS, FONTS } from "../../theme/theme";
 import { CHECKS } from "../../baseline";
 import { useBenchmarkPrefs } from "../../store/benchmarkPrefsStore";
@@ -340,6 +342,12 @@ export default function AgentPlacePage() {
             </PopoverTrigger>
             <PopoverSurface><RunOptionsPanel /></PopoverSurface>
           </Popover>
+          <Popover positioning="below-start" withArrow>
+            <PopoverTrigger disableButtonEnhancement>
+              <Button icon={<ShieldKeyholeRegular />}>Prerequisites</Button>
+            </PopoverTrigger>
+            <PopoverSurface><PrerequisitesPanel /></PopoverSurface>
+          </Popover>
           <div style={{ flex: 1 }} />
           <TabList selectedValue={view} onTabSelect={(_, d) => changeView(d.value as "office" | "cards")} size="small" appearance="subtle">
             <Tab value="office">Office</Tab>
@@ -384,7 +392,7 @@ export default function AgentPlacePage() {
           ) : (
             <Text className={styles.empty}>
               Results appear here when the Reporter is done. The first run asks you to consent to the extra read-only
-              permissions the selected checks need (see CIS L1 checks). Because IntuneShade is a
+              permissions the selected checks need (see Prerequisites for the roles, consent and licences). Because IntuneShade is a
               multi-tenant app, some of these need a Global Administrator or Privileged Role Administrator to grant admin
               consent once for your organisation. Tag your break-glass accounts under Run options first, so their
               Conditional Access exclusions are recognised.
